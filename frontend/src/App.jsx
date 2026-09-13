@@ -5,7 +5,29 @@ const API_URL = "http://localhost:3001";
 function App() {
     const [bots, setBots] = useState([]);
     const [activeBot, setActiveBot] = useState(null);
+    const [backendOnline, setBackendOnline] = useState(false);
+    const [weexConfigured, setWeexConfigured] = useState(false);
     const [loading, setLoading] = useState(true);
+
+    const loadStatus = async () => {
+        try {
+            const response = await fetch(
+                `${API_URL}/api/status`
+            );
+
+            const data = await response.json();
+
+            setBackendOnline(data.status === "online");
+            setWeexConfigured(data.weexConfigured);
+        } catch (error) {
+            console.error(
+                "Failed to load backend status:",
+                error
+            );
+
+            setBackendOnline(false);
+        }
+    };
 
     const loadBotStatus = async () => {
         try {
@@ -15,30 +37,46 @@ function App() {
 
             const data = await response.json();
 
-            setBots(data.availableBots);
+            setBots(data.bots);
             setActiveBot(data.activeBot);
         } catch (error) {
             console.error(
                 "Failed to load bot status:",
                 error
             );
-        } finally {
-            setLoading(false);
         }
     };
 
+    const loadDashboard = async () => {
+        setLoading(true);
+
+        await Promise.all([
+            loadStatus(),
+            loadBotStatus(),
+        ]);
+
+        setLoading(false);
+    };
+
     useEffect(() => {
-        loadBotStatus();
+        loadDashboard();
     }, []);
 
     const startBot = async (name) => {
         try {
-            await fetch(
+            const response = await fetch(
                 `${API_URL}/api/bots/${name}/start`,
                 {
                     method: "POST",
                 }
             );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error(data.error);
+                return;
+            }
 
             await loadBotStatus();
         } catch (error) {
@@ -51,12 +89,19 @@ function App() {
 
     const stopBot = async (name) => {
         try {
-            await fetch(
+            const response = await fetch(
                 `${API_URL}/api/bots/${name}/stop`,
                 {
                     method: "POST",
                 }
             );
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                console.error(data.error);
+                return;
+            }
 
             await loadBotStatus();
         } catch (error) {
@@ -69,7 +114,7 @@ function App() {
 
     if (loading) {
         return (
-            <div>
+            <div className="dashboard">
                 <h1>WEEX Bot Lab</h1>
                 <p>Loading...</p>
             </div>
@@ -77,50 +122,101 @@ function App() {
     }
 
     return (
-        <div>
+        <div className="dashboard">
             <h1>WEEX Bot Lab</h1>
-
-            <p>
-                Backend: ONLINE
-            </p>
 
             <hr />
 
-            <h2>Bot Manager</h2>
+            <section className="status-section">
+                <h2>System Status</h2>
 
-            <p>
-                Active Bot:{" "}
-                <strong>
-                    {activeBot || "None"}
-                </strong>
-            </p>
+                <p>
+                    Backend:{" "}
+                    <strong>
+                        {backendOnline
+                            ? "ONLINE"
+                            : "OFFLINE"}
+                    </strong>
+                </p>
 
-            <h2>Available Bots</h2>
+                <p>
+                    WEEX API:{" "}
+                    <strong>
+                        {weexConfigured
+                            ? "CONFIGURED"
+                            : "NOT CONFIGURED"}
+                    </strong>
+                </p>
+            </section>
 
-            {bots.map((bot) => (
-                <div key={bot}>
-                    <h3>{bot}</h3>
+            <hr />
 
-                    {activeBot === bot ? (
-                        <button
-                            onClick={() =>
-                                stopBot(bot)
-                            }
+            <section className="bot-section">
+                <h2>Bot Manager</h2>
+
+                <p>
+                    Active Bot:{" "}
+                    <strong>
+                        {activeBot || "None"}
+                    </strong>
+                </p>
+
+                <h2>Available Bots</h2>
+
+                <div className="bot-list">
+                    {bots.map((bot) => (
+                        <div
+                            className="bot-card"
+                            key={bot.name}
                         >
-                            Stop Bot
-                        </button>
-                    ) : (
-                        <button
-                            onClick={() =>
-                                startBot(bot)
-                            }
-                            disabled={activeBot !== null}
-                        >
-                            Start Bot
-                        </button>
-                    )}
+                            <h3>{bot.name}</h3>
+
+                            <p>
+                                Version:{" "}
+                                {bot.version}
+                            </p>
+
+                            <p>
+                                Status:{" "}
+                                {bot.status}
+                            </p>
+
+                            <p>
+                                Active:{" "}
+                                {bot.active
+                                    ? "YES"
+                                    : "NO"}
+                            </p>
+
+                            {bot.active ? (
+                                <button
+                                    onClick={() =>
+                                        stopBot(
+                                            bot.name
+                                        )
+                                    }
+                                >
+                                    Stop Bot
+                                </button>
+                            ) : (
+                                <button
+                                    onClick={() =>
+                                        startBot(
+                                            bot.name
+                                        )
+                                    }
+                                    disabled={
+                                        activeBot !==
+                                        null
+                                    }
+                                >
+                                    Start Bot
+                                </button>
+                            )}
+                        </div>
+                    ))}
                 </div>
-            ))}
+            </section>
         </div>
     );
 }
