@@ -1,118 +1,1407 @@
+/* ============================================================
+   RESET
+============================================================ */
+
 * {
     box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    min-height: 100%;
+}
+
+html {
+    background: #080b10;
+}
+
 body {
     margin: 0;
-    min-width: 320px;
-    min-height: 100vh;
 
-    font-family: Arial, Helvetica, sans-serif;
+    font-family:
+        Inter,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Helvetica,
+        Arial,
+        sans-serif;
 
-    background: #111827;
-    color: #ffffff;
+    background: #080b10;
+    color: #e6edf3;
+
+    font-size: 14px;
+
+    overflow-x: hidden;
 }
 
-#root {
-    min-height: 100vh;
+button,
+input,
+select,
+textarea {
+    font-family: inherit;
 }
 
 button {
-    font: inherit;
-}
-
-/* Main */
-
-#root > div {
-    max-width: 1000px;
-    margin: 0 auto;
-    padding: 40px 24px;
-}
-
-/* Headings */
-
-h1 {
-    margin: 0 0 30px;
-    font-size: 32px;
-    color: #ffffff;
-}
-
-h2 {
-    margin: 25px 0 15px;
-    font-size: 20px;
-    color: #ffffff;
-}
-
-h3 {
-    margin: 0 0 10px;
-    font-size: 18px;
-    color: #ffffff;
-}
-
-p {
-    color: #cbd5e1;
-}
-
-/* Lines */
-
-hr {
-    border: 0;
-    border-top: 1px solid #374151;
-    margin: 30px 0;
-}
-
-/* Buttons */
-
-button {
-    padding: 10px 18px;
-
-    border: 0;
-    border-radius: 6px;
-
-    background: #2563eb;
-    color: #ffffff;
-
-    font-weight: 600;
-
     cursor: pointer;
 }
 
-button:hover:not(:disabled) {
-    background: #1d4ed8;
-}
-
 button:disabled {
-    background: #374151;
-    color: #9ca3af;
     cursor: not-allowed;
+    opacity: 0.5;
 }
 
-/* Bot cards */
 
-#root > div > div > div {
-    padding: 20px;
-    margin-bottom: 15px;
+/* ============================================================
+   APP
+============================================================ */
 
-    border: 1px solid #374151;
+.app {
+    width: 100%;
+    min-height: 100vh;
+
+    background: #080b10;
+
+    color: #e6edf3;
+}
+
+
+/* ============================================================
+   HEADER
+============================================================ */
+
+.app-header {
+    width: 100%;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    padding: 20px 28px;
+
+    background: #0d1117;
+
+    border-bottom: 1px solid #202731;
+}
+
+.app-header h1 {
+    margin: 0;
+
+    color: #f1f5f9;
+
+    font-size: 24px;
+    font-weight: 700;
+}
+
+.app-header p {
+    margin: 5px 0 0;
+
+    color: #7d8897;
+
+    font-size: 12px;
+}
+
+.header-status {
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    padding: 8px 12px;
+
+    background: #11161d;
+
+    border: 1px solid #252e39;
+    border-radius: 6px;
+}
+
+.header-status span {
+    color: #697584;
+
+    font-size: 10px;
+    font-weight: 700;
+
+    letter-spacing: 0.7px;
+}
+
+.header-status strong {
+    color: #65d391;
+
+    font-size: 11px;
+}
+
+
+/* ============================================================
+   NAVIGATION
+============================================================ */
+
+.app-tabs {
+    width: 100%;
+
+    display: flex;
+    align-items: center;
+
+    padding: 0 28px;
+
+    gap: 4px;
+
+    background: #0d1117;
+
+    border-bottom: 1px solid #202731;
+
+    overflow-x: auto;
+}
+
+.app-tabs button {
+    height: 46px;
+
+    padding: 0 16px;
+
+    border: 0;
+    border-bottom: 2px solid transparent;
+
+    background: transparent;
+
+    color: #737f8d;
+
+    font-size: 12px;
+    font-weight: 600;
+
+    white-space: nowrap;
+
+    flex-shrink: 0;
+}
+
+.app-tabs button:hover {
+    color: #dce3eb;
+
+    background: #11161d;
+}
+
+.app-tabs button.active {
+    color: #ffffff;
+
+    border-bottom-color: #4e7fd1;
+
+    background: #10151c;
+}
+
+
+/* ============================================================
+   GENERAL
+============================================================ */
+
+.muted {
+    color: #778391;
+}
+
+.dashboard {
+    width: 100%;
+    max-width: 1500px;
+
+    margin: 0 auto;
+
+    padding: 24px 28px 40px;
+}
+
+
+/* ============================================================
+   PANELS
+============================================================ */
+
+.panel {
+    width: 100%;
+
+    margin-bottom: 20px;
+
+    background: #0d1218;
+
+    border: 1px solid #202934;
     border-radius: 8px;
 
-    background: #1f2937;
+    overflow: hidden;
 }
 
-/* Status text */
+.panel-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
 
-strong {
-    color: #60a5fa;
+    gap: 15px;
+
+    padding: 18px 20px;
+
+    border-bottom: 1px solid #202934;
 }
 
-/* Mobile */
+.panel-header h2 {
+    margin: 0;
 
-@media (max-width: 600px) {
-    #root > div {
-        padding: 25px 16px;
+    color: #edf2f7;
+
+    font-size: 17px;
+    font-weight: 650;
+}
+
+.panel-header p {
+    margin: 5px 0 0;
+
+    color: #697583;
+
+    font-size: 11px;
+}
+
+
+/* ============================================================
+   STATUS
+============================================================ */
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+
+    padding: 5px 9px;
+
+    border-radius: 5px;
+
+    background: #171c23;
+
+    border: 1px solid #303843;
+
+    color: #87929f;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.7px;
+
+    white-space: nowrap;
+}
+
+.status-badge.running {
+    background: #0d2117;
+
+    border-color: #24583d;
+
+    color: #62d391;
+}
+
+.status-badge.stopped {
+    background: #171b21;
+
+    border-color: #303843;
+
+    color: #818c99;
+}
+
+
+/* ============================================================
+   SYSTEM STATS
+============================================================ */
+
+.stats-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, minmax(0, 1fr));
+
+    gap: 12px;
+
+    padding: 18px 20px;
+}
+
+.stat-card {
+    min-width: 0;
+
+    padding: 14px;
+
+    background: #0a0f14;
+
+    border: 1px solid #1f2933;
+    border-radius: 6px;
+}
+
+.stat-card span {
+    display: block;
+
+    margin-bottom: 7px;
+
+    color: #697583;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.7px;
+}
+
+.stat-card strong {
+    display: block;
+
+    color: #e4eaf0;
+
+    font-size: 15px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+
+/* ============================================================
+   COIN MANAGER
+============================================================ */
+
+.coin-manager-add {
+    display: flex;
+    align-items: center;
+
+    gap: 8px;
+
+    padding: 16px 20px;
+
+    background: #0b1016;
+
+    border-bottom: 1px solid #202934;
+}
+
+.coin-manager-add input,
+.coin-manager-add select {
+    height: 36px;
+
+    padding: 0 10px;
+
+    background: #080d12;
+
+    border: 1px solid #29343f;
+    border-radius: 5px;
+
+    color: #dfe6ed;
+
+    outline: none;
+
+    font-size: 12px;
+}
+
+.coin-manager-add input {
+    width: 180px;
+}
+
+.coin-manager-add select {
+    width: 160px;
+}
+
+.coin-manager-add input:focus,
+.coin-manager-add select:focus {
+    border-color: #4a70a9;
+}
+
+.coin-manager-add button {
+    height: 36px;
+
+    padding: 0 16px;
+
+    background: #254a7f;
+
+    border: 1px solid #3766a5;
+    border-radius: 5px;
+
+    color: #edf4ff;
+
+    font-size: 10px;
+    font-weight: 800;
+
+    white-space: nowrap;
+}
+
+.coin-manager-add button:hover {
+    background: #2d5a98;
+}
+
+
+/* ============================================================
+   TABLE
+============================================================ */
+
+.table-wrapper {
+    width: 100%;
+
+    overflow-x: auto;
+
+    -webkit-overflow-scrolling: touch;
+}
+
+table {
+    width: 100%;
+
+    border-collapse: collapse;
+}
+
+thead {
+    background: #0a0f14;
+}
+
+th {
+    padding: 10px 13px;
+
+    color: #687584;
+
+    border-bottom: 1px solid #202934;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.6px;
+
+    text-align: left;
+
+    white-space: nowrap;
+}
+
+td {
+    padding: 11px 13px;
+
+    color: #c6ced7;
+
+    border-bottom: 1px solid #18212a;
+
+    font-size: 11px;
+
+    white-space: nowrap;
+}
+
+tbody tr:hover {
+    background: #11171e;
+}
+
+tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.empty-row,
+.empty-cell {
+    padding: 24px !important;
+
+    color: #65717f !important;
+
+    text-align: center !important;
+}
+
+
+/* ============================================================
+   TABLE ACTIONS
+============================================================ */
+
+.table-actions {
+    display: flex;
+    align-items: center;
+
+    gap: 6px;
+
+    flex-wrap: wrap;
+}
+
+.table-actions button {
+    min-height: 28px;
+
+    padding: 0 9px;
+
+    background: #11171e;
+
+    border: 1px solid #2b3641;
+    border-radius: 4px;
+
+    color: #aeb8c3;
+
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.table-actions button:hover {
+    background: #19212a;
+
+    color: #eef3f8;
+}
+
+
+/* ============================================================
+   BOT GRID
+============================================================ */
+
+.bot-grid {
+    display: grid;
+
+    grid-template-columns:
+        repeat(
+            auto-fit,
+            minmax(250px, 1fr)
+        );
+
+    gap: 12px;
+
+    padding: 18px 20px;
+}
+
+.bot-card {
+    display: flex;
+    flex-direction: column;
+
+    gap: 12px;
+
+    min-width: 0;
+
+    padding: 15px;
+
+    background: #0a0f14;
+
+    border: 1px solid #202a34;
+    border-radius: 6px;
+}
+
+.bot-card h3 {
+    margin: 0;
+
+    color: #e6edf3;
+
+    font-size: 14px;
+}
+
+.bot-card p {
+    margin: 4px 0 0;
+
+    color: #6f7b89;
+
+    font-size: 10px;
+}
+
+
+/* ============================================================
+   MESSAGE
+============================================================ */
+
+.app-message {
+    position: fixed;
+
+    top: 15px;
+    right: 15px;
+
+    z-index: 1000;
+
+    display: flex;
+    align-items: center;
+
+    gap: 10px;
+
+    max-width: calc(100vw - 30px);
+
+    padding: 10px 12px;
+
+    background: #111821;
+
+    border: 1px solid #314153;
+    border-radius: 6px;
+
+    color: #dce5ee;
+
+    font-size: 11px;
+
+    box-shadow:
+        0 8px 25px rgba(0, 0, 0, 0.35);
+}
+
+.app-message button {
+    width: 20px;
+    height: 20px;
+
+    padding: 0;
+
+    border: 0;
+
+    background: transparent;
+
+    color: #8995a2;
+
+    font-size: 17px;
+
+    flex-shrink: 0;
+}
+
+
+/* ============================================================
+   PRICE V1 PANEL
+============================================================ */
+
+.price-v1-panel {
+    width: 100%;
+
+    min-width: 0;
+}
+
+
+/* ============================================================
+   PRICE V1 CONTROLS
+============================================================ */
+
+.price-v1-controls {
+    display: grid;
+
+    grid-template-columns:
+        minmax(180px, 1.5fr)
+        minmax(120px, 1fr)
+        minmax(120px, 1fr);
+
+    gap: 12px;
+
+    padding: 16px 20px;
+
+    background: #0b1016;
+
+    border-bottom: 1px solid #202934;
+}
+
+.control-box {
+    min-width: 0;
+}
+
+.control-label {
+    margin-bottom: 6px;
+
+    color: #697583;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.7px;
+}
+
+.control-box select {
+    width: 100%;
+    height: 36px;
+
+    padding: 0 10px;
+
+    background: #080d12;
+
+    border: 1px solid #29343f;
+    border-radius: 5px;
+
+    color: #dfe6ed;
+
+    outline: none;
+
+    font-size: 11px;
+}
+
+.control-box select:focus {
+    border-color: #4a70a9;
+}
+
+.control-value {
+    width: 100%;
+    height: 36px;
+
+    display: flex;
+    align-items: center;
+
+    padding: 0 10px;
+
+    background: #080d12;
+
+    border: 1px solid #202b35;
+    border-radius: 5px;
+
+    color: #cdd5de;
+
+    font-size: 11px;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+
+/* ============================================================
+   PRICE V1 SUMMARY
+============================================================ */
+
+.price-v1-summary {
+    display: grid;
+
+    grid-template-columns:
+        repeat(3, minmax(0, 1fr));
+
+    gap: 1px;
+
+    background: #202934;
+
+    border-bottom: 1px solid #202934;
+}
+
+.summary-box {
+    min-width: 0;
+
+    padding: 14px 18px;
+
+    background: #0d1218;
+}
+
+.summary-label {
+    margin-bottom: 6px;
+
+    color: #687584;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.7px;
+}
+
+.summary-value {
+    color: #e3eaf1;
+
+    font-size: 13px;
+    font-weight: 700;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.summary-value.long {
+    color: #5ed48e;
+}
+
+.summary-value.short {
+    color: #ed6f79;
+}
+
+.summary-value.neutral {
+    color: #a3adb8;
+}
+
+
+/* ============================================================
+   PRICE SECTION
+============================================================ */
+
+.price-section {
+    width: 100%;
+
+    padding: 18px 20px;
+
+    background: #0d1218;
+
+    border-bottom: 1px solid #202934;
+
+    min-width: 0;
+}
+
+.price-section:last-child {
+    border-bottom: 0;
+}
+
+
+/* ============================================================
+   SECTION TITLE
+============================================================ */
+
+.section-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    gap: 12px;
+
+    margin-bottom: 12px;
+
+    color: #dce4ec;
+
+    font-size: 12px;
+    font-weight: 700;
+}
+
+
+/* ============================================================
+   MOVEMENT GRID
+============================================================ */
+
+.movement-grid {
+    width: 100%;
+
+    display: grid;
+
+    grid-template-columns:
+        repeat(5, minmax(0, 1fr));
+
+    gap: 8px;
+}
+
+.movement-card {
+    min-width: 0;
+
+    padding: 12px;
+
+    background: #0a0f14;
+
+    border: 1px solid #202a34;
+    border-radius: 5px;
+}
+
+.movement-label {
+    margin-bottom: 6px;
+
+    color: #687584;
+
+    font-size: 8px;
+    font-weight: 800;
+
+    letter-spacing: 0.6px;
+
+    white-space: nowrap;
+}
+
+.movement-value {
+    color: #dfe7ee;
+
+    font-size: 13px;
+    font-weight: 700;
+
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.movement-value.long {
+    color: #5ed48e;
+}
+
+.movement-value.short {
+    color: #ed6f79;
+}
+
+.movement-value.neutral {
+    color: #a3adb8;
+}
+
+
+/* ============================================================
+   PRICE CHART
+============================================================ */
+
+.price-chart-wrapper {
+    width: 100%;
+
+    min-width: 0;
+
+    overflow: hidden;
+}
+
+.price-chart {
+    width: 100%;
+
+    min-height: 320px;
+
+    background: #0a0f14;
+
+    border: 1px solid #202a34;
+    border-radius: 5px;
+
+    overflow: hidden;
+}
+
+
+/* ============================================================
+   DECISION TABLE
+============================================================ */
+
+.decision-table-wrapper {
+    width: 100%;
+
+    overflow-x: auto;
+
+    -webkit-overflow-scrolling: touch;
+
+    border: 1px solid #202a34;
+    border-radius: 5px;
+}
+
+.decision-table {
+    width: 100%;
+
+    min-width: 760px;
+
+    border-collapse: collapse;
+
+    background: #0a0f14;
+}
+
+.decision-table thead {
+    background: #080d12;
+}
+
+.decision-table th {
+    padding: 10px 12px;
+
+    color: #687584;
+
+    border-bottom: 1px solid #202934;
+
+    font-size: 8px;
+    font-weight: 800;
+
+    letter-spacing: 0.6px;
+
+    text-align: left;
+
+    white-space: nowrap;
+}
+
+.decision-table td {
+    padding: 9px 12px;
+
+    color: #c6ced7;
+
+    border-bottom: 1px solid #18212a;
+
+    font-size: 10px;
+
+    white-space: nowrap;
+
+    vertical-align: middle;
+}
+
+.decision-table tbody tr:hover {
+    background: #10161d;
+}
+
+.decision-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+
+/* ============================================================
+   DECISION DIRECTION
+============================================================ */
+
+.decision-direction {
+    display: inline-flex;
+    align-items: center;
+
+    color: #a3adb8;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 0.3px;
+}
+
+.decision-direction.long {
+    color: #5ed48e;
+}
+
+.decision-direction.short {
+    color: #ed6f79;
+}
+
+.decision-direction.neutral {
+    color: #8b96a3;
+}
+
+
+/* ============================================================
+   PRICE ENTRY CELL
+============================================================ */
+
+.price-entry-cell {
+    min-width: 55px;
+
+    display: flex;
+    flex-direction: column;
+
+    align-items: flex-start;
+
+    gap: 2px;
+}
+
+.price-entry-direction {
+    color: #a3adb8;
+
+    font-size: 9px;
+    font-weight: 800;
+}
+
+.price-entry-direction.long {
+    color: #5ed48e;
+}
+
+.price-entry-direction.short {
+    color: #ed6f79;
+}
+
+.price-entry-direction.neutral {
+    color: #8b96a3;
+}
+
+.price-entry-strength {
+    color: #697583;
+
+    font-size: 8px;
+}
+
+.price-entry-pass {
+    margin-top: 1px;
+
+    padding: 2px 4px;
+
+    border-radius: 3px;
+
+    font-size: 7px;
+    font-weight: 800;
+
+    letter-spacing: 0.4px;
+}
+
+.price-entry-pass.passed {
+    background: #0d2117;
+
+    border: 1px solid #24583d;
+
+    color: #62d391;
+}
+
+.price-entry-pass.failed {
+    background: #211315;
+
+    border: 1px solid #63363c;
+
+    color: #e8959d;
+}
+
+
+/* ============================================================
+   EMPTY CELLS
+============================================================ */
+
+.empty-cell {
+    padding: 24px 15px !important;
+
+    color: #65717f !important;
+
+    text-align: center !important;
+}
+
+
+/* ============================================================
+   PRICE V1 ERROR
+============================================================ */
+
+.price-v1-error {
+    margin: 18px 20px;
+
+    padding: 11px 13px;
+
+    background: #211315;
+
+    border: 1px solid #63363c;
+    border-radius: 5px;
+
+    color: #e8959d;
+
+    font-size: 11px;
+
+    overflow-wrap: anywhere;
+}
+
+
+/* ============================================================
+   PRICE V1 FOOTER
+============================================================ */
+
+.price-v1-footer {
+    padding: 11px 20px;
+
+    background: #0a0f14;
+
+    color: #596574;
+
+    font-size: 9px;
+
+    border-top: 1px solid #18212a;
+}
+
+
+/* ============================================================
+   GENERIC BOT CARDS
+============================================================ */
+
+.bot-card {
+    min-width: 0;
+}
+
+
+/* ============================================================
+   SELECT OPTIONS
+============================================================ */
+
+select option {
+    background: #0d1218;
+    color: #e6edf3;
+}
+
+
+/* ============================================================
+   FOOTER
+============================================================ */
+
+.app-footer {
+    width: 100%;
+
+    padding: 0 28px 25px;
+
+    color: #4f5b69;
+
+    text-align: center;
+
+    font-size: 9px;
+}
+
+
+/* ============================================================
+   SCROLLBARS
+============================================================ */
+
+::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: #080b10;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #252f3a;
+
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #34414e;
+}
+
+
+/* ============================================================
+   TABLET
+============================================================ */
+
+@media (max-width: 1000px) {
+
+    .stats-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
     }
 
-    h1 {
-        font-size: 28px;
+    .movement-grid {
+        grid-template-columns:
+            repeat(3, minmax(0, 1fr));
+    }
+}
+
+
+/* ============================================================
+   SMALL TABLET
+============================================================ */
+
+@media (max-width: 750px) {
+
+    .dashboard {
+        padding: 18px 14px 30px;
+    }
+
+    .app-header {
+        padding: 16px 18px;
+    }
+
+    .app-tabs {
+        padding: 0 12px;
+    }
+
+    .panel-header {
+        padding: 15px 16px;
+    }
+
+    .price-v1-controls {
+        grid-template-columns: 1fr;
+    }
+
+    .price-v1-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-box {
+        padding: 12px 14px;
+    }
+
+    .price-section {
+        padding: 15px 14px;
+    }
+
+    .movement-grid {
+        grid-template-columns:
+            repeat(3, minmax(0, 1fr));
+    }
+
+    .price-chart {
+        min-height: 320px;
+    }
+}
+
+
+/* ============================================================
+   MOBILE
+============================================================ */
+
+@media (max-width: 650px) {
+
+    .app-header {
+        padding: 16px;
+
+        flex-direction: column;
+
+        align-items: flex-start;
+
+        gap: 12px;
+    }
+
+    .app-header h1 {
+        font-size: 21px;
+    }
+
+    .header-status {
+        width: 100%;
+
+        justify-content: space-between;
+    }
+
+    .app-tabs {
+        padding: 0 10px;
+    }
+
+    .app-tabs button {
+        padding: 0 12px;
+    }
+
+    .dashboard {
+        padding: 15px 10px 30px;
+    }
+
+    .panel-header {
+        padding: 15px;
+
+        flex-direction: column;
+
+        align-items: flex-start;
+    }
+
+    .stats-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+
+        padding: 14px;
+    }
+
+    .coin-manager-add {
+        flex-direction: column;
+
+        align-items: stretch;
+
+        padding: 14px;
+    }
+
+    .coin-manager-add input,
+    .coin-manager-add select,
+    .coin-manager-add button {
+        width: 100%;
+    }
+
+    .bot-grid {
+        grid-template-columns: 1fr;
+
+        padding: 14px;
+    }
+
+    .price-v1-controls {
+        grid-template-columns: 1fr;
+
+        padding: 14px;
+    }
+
+    .price-v1-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .summary-box {
+        padding: 12px 14px;
+    }
+
+    .price-section {
+        padding: 15px 14px;
+    }
+
+    .section-title {
+        align-items: flex-start;
+
+        flex-direction: column;
+
+        gap: 5px;
+    }
+
+    .movement-grid {
+        grid-template-columns:
+            repeat(2, minmax(0, 1fr));
+    }
+
+    .price-chart {
+        min-height: 300px;
+    }
+
+    .app-footer {
+        padding: 0 10px 20px;
+    }
+}
+
+
+/* ============================================================
+   VERY SMALL
+============================================================ */
+
+@media (max-width: 400px) {
+
+    body {
+        font-size: 13px;
+    }
+
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .movement-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .price-chart {
+        min-height: 260px;
+    }
+
+    .app-message {
+        top: 10px;
+        right: 10px;
+        left: 10px;
+
+        max-width: none;
     }
 }
