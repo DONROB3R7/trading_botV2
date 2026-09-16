@@ -1,36 +1,60 @@
-
 const weex = require("../backend/services/weex");
+
+const tradingExecutor = require("../backend/services/tradingExecutor");
+
+const botConfig = require("../backend/config/botConfig");
+
 
 // ============================================================
 // PRICE V1 BOT
 // ============================================================
 //
-// PRICE ONLY
+// PRICE + EXECUTION CONNECTION
 //
-// Original Price V1 logic:
+// STRATEGY:
 //
 // TREND
-//   200 candles
-//   >= 53% directional strength
+//   Configured candle window
+//   >= configured directional strength
 //
 // ENTRY / PULLBACK
-//   15 / 20 / 30 / 60 candles
-//   >= 50% directional strength
+//   Configured entry windows
+//   >= configured directional strength
 //
 // PULLBACK CONFIRMATION
-//   LONG trend  -> 3 of 4 SHORT entries = LONG
-//   SHORT trend -> 3 of 4 LONG entries  = SHORT
+//   LONG trend  -> configured number of SHORT entries = LONG
+//   SHORT trend -> configured number of LONG entries  = SHORT
 //
 // CYCLE
-//   10 one-minute snapshots
-//   6 of 10 required for final LONG / SHORT
+//   Configured number of one-minute snapshots
+//   Existing final LONG / SHORT voting logic remains unchanged.
 //
-// NO:
-//   Order book
-//   Trading
-//   TP / SL
-//   Position management
+// EXECUTION:
+//
+//   COMPLETED CYCLE LONG
+//       -> tradingExecutor.executeSignal(LONG)
+//
+//   COMPLETED CYCLE SHORT
+//       -> tradingExecutor.executeSignal(SHORT)
+//
+//   COMPLETED CYCLE NEUTRAL
+//       -> NO ORDER
+//
+// IMPORTANT:
+//
+//   Price V1 does NOT:
+//
+//   - calculate WEEX quantity
+//   - place WEEX orders
+//   - calculate TP / SL
+//   - manage position state
+//   - sign API requests
+//   - use order book
+//
+//   tradingExecutor owns all live execution.
+//
 // ============================================================
+
 
 function createPriceV1(symbol) {
 
@@ -41,11 +65,33 @@ function createPriceV1(symbol) {
     const cleanSymbol =
         String(symbol || "")
             .trim()
-            .toUpperCase();
+            .toUpperCase()
+            .replace(/\.P$/, "");
 
     if (!cleanSymbol) {
-        throw new Error("Price V1 requires a symbol");
+        throw new Error(
+            "Price V1 requires a symbol"
+        );
     }
+
+
+    // ========================================================
+    // SESSION SETTINGS
+    //
+    // Get the current Price V1 session configuration.
+    //
+    // If the dashboard has not changed anything,
+    // botConfig returns the default values.
+    //
+    // IMPORTANT:
+    //
+    // Settings are captured when the bot instance is created.
+    // A running bot is NOT silently changed in the middle
+    // of a cycle.
+    // ========================================================
+
+    const sessionSettings =
+        botConfig.getPriceV1Settings();
 
 
     // ========================================================
@@ -58,69 +104,118 @@ function createPriceV1(symbol) {
         // BASIC INFO
         // ====================================================
 
-        name: "pricev1",
+        name:
+            "pricev1",
 
-        version: "1.0.0",
+        version:
+            "1.1.0",
 
-        status: "stopped",
+        status:
+            "stopped",
 
 
         // ====================================================
         // MARKET SETTINGS
         // ====================================================
 
-        symbol: cleanSymbol,
+        symbol:
+            cleanSymbol,
 
-        timeframe: "1m",
+        timeframe:
+            "1m",
 
 
         // ====================================================
-        // ORIGINAL STRATEGY SETTINGS
+        // PRICE V1 STRATEGY SETTINGS
+        //
+        // These now come from the current session settings.
+        //
+        // The actual strategy logic below is unchanged.
         // ====================================================
 
-        TREND_CANDLES: 200,
+        TREND_CANDLES:
+            sessionSettings.TREND_CANDLES,
 
-        ENTRY_WINDOWS: [
-            15,
-            20,
-            30,
-            60,
-        ],
+        ENTRY_WINDOWS:
+            [
+                ...sessionSettings.ENTRY_WINDOWS,
+            ],
 
-        TREND_REQUIRED: 53,
+        TREND_REQUIRED:
+            sessionSettings.TREND_REQUIRED,
 
-        ENTRY_REQUIRED: 50,
+        ENTRY_REQUIRED:
+            sessionSettings.ENTRY_REQUIRED,
 
-        ENTRY_CONFIRMATIONS_REQUIRED: 3,
+        ENTRY_CONFIRMATIONS_REQUIRED:
+            sessionSettings.ENTRY_CONFIRMATIONS_REQUIRED,
 
-        CYCLE_LENGTH: 10,
+        CYCLE_LENGTH:
+            sessionSettings.CYCLE_LENGTH,
 
-        HISTORY_LIMIT: 500,
+        HISTORY_LIMIT:
+            sessionSettings.HISTORY_LIMIT,
 
-        KLINE_LIMIT: 1000,
+        KLINE_LIMIT:
+            sessionSettings.KLINE_LIMIT,
 
-        REFRESH_BUFFER_MS: 1200,
+        REFRESH_BUFFER_MS:
+            sessionSettings.REFRESH_BUFFER_MS,
+
+
+        // ====================================================
+        // EXECUTION SETTINGS
+        // ====================================================
+
+        // true = completed LONG/SHORT cycles can execute
+        executionEnabled:
+            true,
+
+        // Prevents accidental overlapping execution calls.
+        executionProcessing:
+            false,
+
+        // Last live execution result.
+        lastExecution:
+            null,
+
+        // Last execution error.
+        lastExecutionError:
+            null,
+
+        // Number of completed cycles that generated
+        // an actual LONG or SHORT execution request.
+        executionCount:
+            0,
 
 
         // ====================================================
         // RUNTIME
         // ====================================================
 
-        timer: null,
+        timer:
+            null,
 
-        processing: false,
+        processing:
+            false,
 
-        currentCandles: [],
+        currentCandles:
+            [],
 
-        currentCycle: [],
+        currentCycle:
+            [],
 
-        cycleHistory: [],
+        cycleHistory:
+            [],
 
-        lastSnapshot: null,
+        lastSnapshot:
+            null,
 
-        lastCycle: null,
+        lastCycle:
+            null,
 
-        lastError: null,
+        lastError:
+            null,
 
 
         // ====================================================
@@ -129,7 +224,10 @@ function createPriceV1(symbol) {
 
         start() {
 
-            if (this.status === "running") {
+            if (
+                this.status ===
+                "running"
+            ) {
 
                 console.log(
                     `[${this.name}:${this.symbol}] Already running`
@@ -139,13 +237,41 @@ function createPriceV1(symbol) {
             }
 
 
-            this.status = "running";
+            this.status =
+                "running";
 
-            this.lastError = null;
+            this.lastError =
+                null;
 
 
             console.log(
                 `[${this.name}:${this.symbol}] Started`
+            );
+
+
+            console.log(
+                `[${this.name}:${this.symbol}] Execution: ` +
+                `${this.executionEnabled ? "ENABLED" : "DISABLED"}`
+            );
+
+
+            // ------------------------------------------------
+            // SHOW SESSION SETTINGS
+            // ------------------------------------------------
+
+            console.log(
+                `[${this.name}:${this.symbol}] Session settings:`
+            );
+
+            console.log(
+                `[${this.name}:${this.symbol}] ` +
+                `TREND=${this.TREND_CANDLES} candles | ` +
+                `TREND_REQUIRED=${this.TREND_REQUIRED}% | ` +
+                `ENTRY_REQUIRED=${this.ENTRY_REQUIRED}% | ` +
+                `ENTRY_WINDOWS=${this.ENTRY_WINDOWS.join(",")} | ` +
+                `CONFIRMATIONS=${this.ENTRY_CONFIRMATIONS_REQUIRED} | ` +
+                `CYCLE=${this.CYCLE_LENGTH} | ` +
+                `KLINES=${this.KLINE_LIMIT}`
             );
 
 
@@ -163,9 +289,7 @@ function createPriceV1(symbol) {
             this.timer =
                 setInterval(
                     () => {
-
                         this.refresh();
-
                     },
                     60 * 1000
                 );
@@ -180,13 +304,17 @@ function createPriceV1(symbol) {
 
             if (this.timer) {
 
-                clearInterval(this.timer);
+                clearInterval(
+                    this.timer
+                );
 
-                this.timer = null;
+                this.timer =
+                    null;
             }
 
 
-            this.status = "stopped";
+            this.status =
+                "stopped";
 
 
             console.log(
@@ -201,7 +329,9 @@ function createPriceV1(symbol) {
 
         async refresh() {
 
-            if (this.processing) {
+            if (
+                this.processing
+            ) {
 
                 console.log(
                     `[${this.name}:${this.symbol}] Refresh already running`
@@ -211,24 +341,28 @@ function createPriceV1(symbol) {
             }
 
 
-            if (this.status !== "running") {
-
+            if (
+                this.status !==
+                "running"
+            ) {
                 return;
             }
 
 
-            this.processing = true;
+            this.processing =
+                true;
 
 
             try {
 
                 console.log(
-                    `[${this.name}:${this.symbol}] Fetching ${this.KLINE_LIMIT} candles`
+                    `[${this.name}:${this.symbol}] ` +
+                    `Fetching ${this.KLINE_LIMIT} candles`
                 );
 
 
                 // ------------------------------------------------
-                // WEEX
+                // WEEX MARKET DATA
                 // ------------------------------------------------
 
                 const rawCandles =
@@ -250,7 +384,8 @@ function createPriceV1(symbol) {
 
 
                 console.log(
-                    `[${this.name}:${this.symbol}] Received ${candles.length} candles`
+                    `[${this.name}:${this.symbol}] ` +
+                    `Received ${candles.length} candles`
                 );
 
 
@@ -259,7 +394,7 @@ function createPriceV1(symbol) {
 
 
                 // ------------------------------------------------
-                // NEED 201 CANDLES FOR 200-CANDLE TREND
+                // NEED TREND_CANDLES + 1 CANDLES
                 // ------------------------------------------------
 
                 if (
@@ -268,7 +403,10 @@ function createPriceV1(symbol) {
                 ) {
 
                     console.log(
-                        `[${this.name}:${this.symbol}] Not enough candles: ${candles.length}/${this.TREND_CANDLES + 1}`
+                        `[${this.name}:${this.symbol}] ` +
+                        `Not enough candles: ` +
+                        `${candles.length}/` +
+                        `${this.TREND_CANDLES + 1}`
                     );
 
                     return;
@@ -296,7 +434,8 @@ function createPriceV1(symbol) {
                 ) {
 
                     console.log(
-                        `[${this.name}:${this.symbol}] Candle already processed`
+                        `[${this.name}:${this.symbol}] ` +
+                        `Candle already processed`
                     );
 
                     return;
@@ -313,23 +452,59 @@ function createPriceV1(symbol) {
 
                 // ------------------------------------------------
                 // ADD TO CYCLE
+                //
+                // This returns a completed cycle when the
+                // configured cycle finishes.
                 // ------------------------------------------------
 
-                this.addSnapshotToCycle(
-                    snapshot
-                );
+                const completedCycle =
+                    this.addSnapshotToCycle(
+                        snapshot
+                    );
+
+
+                // ------------------------------------------------
+                // DEBUG LOG
+                // ------------------------------------------------
+
+                const entryLog =
+                    this.ENTRY_WINDOWS
+                        .map(
+                            (windowSize) =>
+                                `${windowSize}=` +
+                                `${
+                                    snapshot
+                                        .entries?.[
+                                        windowSize
+                                    ]?.direction ||
+                                    "NEUTRAL"
+                                }`
+                        )
+                        .join(" | ");
 
 
                 console.log(
                     `[${this.name}:${this.symbol}] ` +
                     `CYCLE ${this.currentCycle.length}/${this.CYCLE_LENGTH} | ` +
-                    `TREND ${snapshot.trend.direction} ${snapshot.trend.strength.toFixed(2)}% | ` +
-                    `15=${snapshot.entries[15].direction} | ` +
-                    `20=${snapshot.entries[20].direction} | ` +
-                    `30=${snapshot.entries[30].direction} | ` +
-                    `60=${snapshot.entries[60].direction} | ` +
+                    `TREND ${snapshot.trend.direction} ` +
+                    `${snapshot.trend.strength.toFixed(2)}% | ` +
+                    `${entryLog} | ` +
                     `FINAL ${snapshot.decision}`
                 );
+
+
+                // ------------------------------------------------
+                // COMPLETED CYCLE
+                // ------------------------------------------------
+
+                if (
+                    completedCycle
+                ) {
+
+                    await this.handleCompletedCycle(
+                        completedCycle
+                    );
+                }
 
 
             } catch (error) {
@@ -339,12 +514,387 @@ function createPriceV1(symbol) {
 
 
                 console.error(
-                    `[${this.name}:${this.symbol}] Error: ${error.message}`
+                    `[${this.name}:${this.symbol}] ` +
+                    `Error: ${error.message}`
                 );
 
             } finally {
 
-                this.processing = false;
+                this.processing =
+                    false;
+            }
+        },
+
+
+        // ====================================================
+        // HANDLE COMPLETED CYCLE
+        // ====================================================
+        //
+        // THIS is the bridge between Price V1 and the
+        // central execution layer.
+        //
+        // No partial snapshot is traded.
+        //
+        // ONLY the final cycle decision can execute.
+        // ====================================================
+
+        async handleCompletedCycle(
+            completedCycle
+        ) {
+
+            const decision =
+                String(
+                    completedCycle?.decision ||
+                    "NEUTRAL"
+                )
+                    .trim()
+                    .toUpperCase();
+
+
+            console.log("");
+
+            console.log(
+                "============================================================"
+            );
+
+            console.log(
+                `[${this.name}:${this.symbol}] COMPLETED CYCLE`
+            );
+
+            console.log(
+                "============================================================"
+            );
+
+            console.log(
+                "Cycle:",
+                completedCycle.cycleId
+            );
+
+            console.log(
+                "Decision:",
+                decision
+            );
+
+            console.log(
+                "Reason:",
+                completedCycle.reason
+            );
+
+
+            // ------------------------------------------------
+            // EXECUTION DISABLED
+            // ------------------------------------------------
+
+            if (
+                !this.executionEnabled
+            ) {
+
+                console.log(
+                    `[${this.name}:${this.symbol}] ` +
+                    `Execution disabled. No order sent.`
+                );
+
+
+                this.lastExecution = {
+
+                    success:
+                        true,
+
+                    liveExecution:
+                        false,
+
+                    action:
+                        "NO_ACTION",
+
+                    symbol:
+                        this.symbol,
+
+                    signal:
+                        decision,
+
+                    reason:
+                        "Price V1 execution is disabled.",
+                };
+
+
+                return this.lastExecution;
+            }
+
+
+            // ------------------------------------------------
+            // NEUTRAL
+            // ------------------------------------------------
+            //
+            // NEUTRAL must never place an order.
+            // The live WEEX position is simply left alone.
+            // ------------------------------------------------
+
+            if (
+                decision ===
+                "NEUTRAL"
+            ) {
+
+                console.log(
+                    `[${this.name}:${this.symbol}] ` +
+                    `FINAL DECISION NEUTRAL -> NO ACTION`
+                );
+
+
+                this.lastExecution = {
+
+                    success:
+                        true,
+
+                    liveExecution:
+                        false,
+
+                    action:
+                        "NO_ACTION",
+
+                    symbol:
+                        this.symbol,
+
+                    signal:
+                        "NEUTRAL",
+
+                    reason:
+                        "Completed Price V1 cycle is NEUTRAL.",
+                };
+
+
+                this.lastExecutionError =
+                    null;
+
+
+                return this.lastExecution;
+            }
+
+
+            // ------------------------------------------------
+            // SAFETY: ONLY LONG / SHORT CAN REACH EXECUTION
+            // ------------------------------------------------
+
+            if (
+                decision !== "LONG" &&
+                decision !== "SHORT"
+            ) {
+
+                console.error(
+                    `[${this.name}:${this.symbol}] ` +
+                    `Invalid completed-cycle decision: ${decision}`
+                );
+
+
+                this.lastExecution = {
+
+                    success:
+                        false,
+
+                    liveExecution:
+                        false,
+
+                    action:
+                        "ERROR",
+
+                    symbol:
+                        this.symbol,
+
+                    signal:
+                        decision,
+
+                    error:
+                        `Invalid Price V1 cycle decision: ${decision}`,
+                };
+
+
+                this.lastExecutionError =
+                    this.lastExecution.error;
+
+
+                return this.lastExecution;
+            }
+
+
+            // ------------------------------------------------
+            // PREVENT OVERLAPPING EXECUTION
+            // ------------------------------------------------
+
+            if (
+                this.executionProcessing
+            ) {
+
+                console.log(
+                    `[${this.name}:${this.symbol}] ` +
+                    `Execution already running`
+                );
+
+
+                this.lastExecution = {
+
+                    success:
+                        false,
+
+                    liveExecution:
+                        true,
+
+                    action:
+                        "LOCKED",
+
+                    symbol:
+                        this.symbol,
+
+                    signal:
+                        decision,
+
+                    reason:
+                        "Price V1 execution is already running.",
+                };
+
+
+                return this.lastExecution;
+            }
+
+
+            this.executionProcessing =
+                true;
+
+
+            try {
+
+                console.log("");
+
+                console.log(
+                    `[${this.name}:${this.symbol}] ` +
+                    `EXECUTION SIGNAL -> ${decision}`
+                );
+
+
+                // ------------------------------------------------
+                // CENTRAL EXECUTION ENGINE
+                // ------------------------------------------------
+                //
+                // tradingExecutor owns:
+                //
+                // - live position lookup
+                // - no-pyramiding
+                // - reversal
+                // - quantity
+                // - WEEX order
+                // - confirmation
+                // - TP
+                // - SL
+                //
+                // Price V1 does none of those.
+                // ------------------------------------------------
+
+                const result =
+                    await tradingExecutor.executeSignal(
+                        this.symbol,
+                        decision,
+                        {
+                            source:
+                                "pricev1",
+
+                            bot:
+                                this.name,
+
+                            cycleId:
+                                completedCycle.cycleId,
+                        }
+                    );
+
+
+                this.lastExecution =
+                    result;
+
+
+                this.lastExecutionError =
+                    result?.success
+                        ? null
+                        : (
+                            result?.error ||
+                            "Unknown execution error."
+                        );
+
+
+                if (
+                    result?.success
+                ) {
+
+                    this.executionCount +=
+                        1;
+
+
+                    console.log(
+                        `[${this.name}:${this.symbol}] ` +
+                        `EXECUTION SUCCESS | ` +
+                        `${decision}`
+                    );
+
+                } else {
+
+                    console.error(
+                        `[${this.name}:${this.symbol}] ` +
+                        `EXECUTION FAILED | ` +
+                        `${result?.error || "Unknown error"}`
+                    );
+                }
+
+
+                console.log(
+                    "EXECUTION RESULT:",
+                    JSON.stringify(
+                        result,
+                        null,
+                        2
+                    )
+                );
+
+
+                return result;
+
+
+            } catch (error) {
+
+                this.lastExecutionError =
+                    error.message;
+
+
+                this.lastExecution = {
+
+                    success:
+                        false,
+
+                    liveExecution:
+                        true,
+
+                    action:
+                        "ERROR",
+
+                    symbol:
+                        this.symbol,
+
+                    signal:
+                        decision,
+
+                    error:
+                        error.message,
+                };
+
+
+                console.error(
+                    `[${this.name}:${this.symbol}] ` +
+                    `Execution error: ${error.message}`
+                );
+
+
+                return this.lastExecution;
+
+
+            } finally {
+
+                this.executionProcessing =
+                    false;
             }
         },
 
@@ -353,22 +903,9 @@ function createPriceV1(symbol) {
         // NORMALIZE WEEX KLINES
         // ====================================================
 
-        normalizeCandles(rawResponse) {
-
-            // ------------------------------------------------
-            // WEEX may return:
-            //
-            // [
-            //   [...],
-            //   [...]
-            // ]
-            //
-            // or:
-            //
-            // {
-            //   data: [...]
-            // }
-            // ------------------------------------------------
+        normalizeCandles(
+            rawResponse
+        ) {
 
             let rawCandles =
                 rawResponse;
@@ -387,14 +924,17 @@ function createPriceV1(symbol) {
 
 
             if (
-                !Array.isArray(rawCandles)
+                !Array.isArray(
+                    rawCandles
+                )
             ) {
 
                 return [];
             }
 
 
-            const normalized = [];
+            const normalized =
+                [];
 
 
             for (
@@ -411,23 +951,39 @@ function createPriceV1(symbol) {
 
 
                 let time =
-                    Number(candle[0]);
+                    Number(
+                        candle[0]
+                    );
 
 
                 const open =
-                    Number(candle[1]);
+                    Number(
+                        candle[1]
+                    );
+
 
                 const high =
-                    Number(candle[2]);
+                    Number(
+                        candle[2]
+                    );
+
 
                 const low =
-                    Number(candle[3]);
+                    Number(
+                        candle[3]
+                    );
+
 
                 const close =
-                    Number(candle[4]);
+                    Number(
+                        candle[4]
+                    );
+
 
                 const volume =
-                    Number(candle[5]);
+                    Number(
+                        candle[5]
+                    );
 
 
                 if (
@@ -442,12 +998,8 @@ function createPriceV1(symbol) {
                 }
 
 
-                // ------------------------------------------------
-                // Lightweight Charts / old browser logic uses
-                // Unix SECONDS.
-                //
                 // WEEX can return milliseconds.
-                // ------------------------------------------------
+                // Price V1 internally uses Unix seconds.
 
                 if (
                     time >
@@ -474,10 +1026,11 @@ function createPriceV1(symbol) {
                     close,
 
                     volume:
-                        Number.isFinite(volume)
+                        Number.isFinite(
+                            volume
+                        )
                             ? volume
                             : 0,
-
                 });
             }
 
@@ -488,7 +1041,8 @@ function createPriceV1(symbol) {
 
             normalized.sort(
                 (a, b) =>
-                    a.time - b.time
+                    a.time -
+                    b.time
             );
 
 
@@ -496,9 +1050,11 @@ function createPriceV1(symbol) {
             // REMOVE DUPLICATE TIMESTAMPS
             // ------------------------------------------------
 
-            const unique = [];
+            const unique =
+                [];
 
-            let lastTime = null;
+            let lastTime =
+                null;
 
 
             for (
@@ -532,19 +1088,25 @@ function createPriceV1(symbol) {
         // PRICE MOVEMENT
         // ====================================================
 
-        calculateCandleChange(candle) {
+        calculateCandleChange(
+            candle
+        ) {
 
             if (!candle) {
-
                 return null;
             }
 
 
             const open =
-                Number(candle.open);
+                Number(
+                    candle.open
+                );
+
 
             const close =
-                Number(candle.close);
+                Number(
+                    candle.close
+                );
 
 
             if (
@@ -577,7 +1139,8 @@ function createPriceV1(symbol) {
 
             if (
                 !Array.isArray(candles) ||
-                candles.length <= candleCount
+                candles.length <=
+                candleCount
             ) {
 
                 return null;
@@ -608,15 +1171,24 @@ function createPriceV1(symbol) {
 
 
             const currentClose =
-                Number(current.close);
+                Number(
+                    current.close
+                );
+
 
             const previousClose =
-                Number(previous.close);
+                Number(
+                    previous.close
+                );
 
 
             if (
-                !Number.isFinite(currentClose) ||
-                !Number.isFinite(previousClose) ||
+                !Number.isFinite(
+                    currentClose
+                ) ||
+                !Number.isFinite(
+                    previousClose
+                ) ||
                 previousClose === 0
             ) {
 
@@ -666,31 +1238,12 @@ function createPriceV1(symbol) {
                         candles,
                         60
                     ),
-
             };
         },
 
 
         // ====================================================
         // DIRECTIONAL STRENGTH
-        // ====================================================
-        //
-        // THIS IS THE ORIGINAL PRICE V1 LOGIC.
-        //
-        // It measures the total percentage movement:
-        //
-        // UP movement
-        // versus
-        // DOWN movement
-        //
-        // Strength is the larger side as % of total movement.
-        //
-        // IMPORTANT:
-        //
-        // This function does NOT apply ENTRY_REQUIRED.
-        //
-        // Trend uses it with 53%.
-        // Entry uses it independently with 50%.
         // ====================================================
 
         calculateDirectionalStrength(
@@ -701,7 +1254,7 @@ function createPriceV1(symbol) {
             if (
                 !Array.isArray(candles) ||
                 candles.length <
-                    windowSize + 1
+                windowSize + 1
             ) {
 
                 return {
@@ -729,7 +1282,6 @@ function createPriceV1(symbol) {
 
                     window:
                         windowSize,
-
                 };
             }
 
@@ -740,31 +1292,46 @@ function createPriceV1(symbol) {
                 1;
 
 
-            let upMovement = 0;
+            let upMovement =
+                0;
 
-            let downMovement = 0;
+
+            let downMovement =
+                0;
 
 
             for (
-                let i = start + 1;
-                i < candles.length;
+                let i =
+                    start + 1;
+
+                i <
+                candles.length;
+
                 i++
             ) {
 
                 const previous =
                     Number(
-                        candles[i - 1].close
+                        candles[
+                            i - 1
+                        ].close
                     );
+
 
                 const current =
                     Number(
-                        candles[i].close
+                        candles[i]
+                            .close
                     );
 
 
                 if (
-                    !Number.isFinite(previous) ||
-                    !Number.isFinite(current) ||
+                    !Number.isFinite(
+                        previous
+                    ) ||
+                    !Number.isFinite(
+                        current
+                    ) ||
                     previous === 0
                 ) {
 
@@ -795,7 +1362,9 @@ function createPriceV1(symbol) {
                 ) {
 
                     downMovement +=
-                        Math.abs(change);
+                        Math.abs(
+                            change
+                        );
                 }
             }
 
@@ -834,7 +1403,6 @@ function createPriceV1(symbol) {
 
                     window:
                         windowSize,
-
                 };
             }
 
@@ -858,8 +1426,10 @@ function createPriceV1(symbol) {
             let direction =
                 "NEUTRAL";
 
+
             let rawDirection =
                 "NEUTRAL";
+
 
             let strength =
                 0;
@@ -872,6 +1442,7 @@ function createPriceV1(symbol) {
 
                 rawDirection =
                     "LONG";
+
 
                 strength =
                     upStrength;
@@ -890,6 +1461,7 @@ function createPriceV1(symbol) {
 
                 rawDirection =
                     "SHORT";
+
 
                 strength =
                     downStrength;
@@ -924,7 +1496,6 @@ function createPriceV1(symbol) {
 
                 window:
                     windowSize,
-
             };
         },
 
@@ -953,31 +1524,12 @@ function createPriceV1(symbol) {
 
                 required:
                     this.TREND_REQUIRED,
-
             };
         },
 
 
         // ====================================================
         // ENTRY
-        // ====================================================
-        //
-        // CRITICAL:
-        //
-        // Entry uses 50%.
-        //
-        // It does NOT use the 53% trend requirement.
-        //
-        // Example:
-        //
-        // 15 candle movement:
-        // LONG 51.20%
-        //
-        // Entry = LONG
-        //
-        // Even though 51.20 < 53.
-        //
-        // This is exactly how the old Price V1 worked.
         // ====================================================
 
         calculateEntry(
@@ -1029,24 +1581,12 @@ function createPriceV1(symbol) {
                     this.ENTRY_REQUIRED,
 
                 direction,
-
             };
         },
 
 
         // ====================================================
         // ENTRY CONFIRMATION
-        // ====================================================
-        //
-        // CAVEMAN PULLBACK:
-        //
-        // TREND LONG
-        //   need 3 SHORT entries
-        //   final = LONG
-        //
-        // TREND SHORT
-        //   need 3 LONG entries
-        //   final = SHORT
         // ====================================================
 
         calculateEntryConfirmation(
@@ -1055,14 +1595,21 @@ function createPriceV1(symbol) {
         ) {
 
             const entryList =
-                Object.values(entries || {});
+                Object.values(
+                    entries || {}
+                );
 
 
-            let rawLongVotes = 0;
+            let rawLongVotes =
+                0;
 
-            let rawShortVotes = 0;
 
-            let neutralVotes = 0;
+            let rawShortVotes =
+                0;
+
+
+            let neutralVotes =
+                0;
 
 
             for (
@@ -1090,9 +1637,13 @@ function createPriceV1(symbol) {
             }
 
 
-            let longVotes = 0;
+            let longVotes =
+                0;
 
-            let shortVotes = 0;
+
+            let shortVotes =
+                0;
+
 
             let decision =
                 "NEUTRAL";
@@ -1103,12 +1654,12 @@ function createPriceV1(symbol) {
                 "LONG"
             ) {
 
-                // ------------------------------------------
-                // LONG trend requires SHORT pullback
-                // ------------------------------------------
+                // LONG trend requires
+                // SHORT pullback.
 
                 longVotes =
                     rawShortVotes;
+
 
                 shortVotes =
                     rawLongVotes;
@@ -1128,12 +1679,12 @@ function createPriceV1(symbol) {
                 "SHORT"
             ) {
 
-                // ------------------------------------------
-                // SHORT trend requires LONG pullback
-                // ------------------------------------------
+                // SHORT trend requires
+                // LONG pullback.
 
                 shortVotes =
                     rawLongVotes;
+
 
                 longVotes =
                     rawShortVotes;
@@ -1161,12 +1712,12 @@ function createPriceV1(symbol) {
                 neutralVotes,
 
                 confirmed:
-                    decision !== "NEUTRAL",
+                    decision !==
+                    "NEUTRAL",
 
                 rawLongVotes,
 
                 rawShortVotes,
-
             };
         },
 
@@ -1187,12 +1738,14 @@ function createPriceV1(symbol) {
 
             const candleTime =
                 candle?.time
-                    ? candle.time * 1000
+                    ? candle.time *
+                      1000
                     : Date.now();
 
 
             const price =
-                candle?.close ?? null;
+                candle?.close ??
+                null;
 
 
             // ------------------------------------------------
@@ -1217,12 +1770,10 @@ function createPriceV1(symbol) {
 
             // ------------------------------------------------
             // ENTRIES
-            //
-            // IMPORTANT:
-            // Object exactly like the old browser version.
             // ------------------------------------------------
 
-            const entries = {};
+            const entries =
+                {};
 
 
             for (
@@ -1230,7 +1781,9 @@ function createPriceV1(symbol) {
                 this.ENTRY_WINDOWS
             ) {
 
-                entries[windowSize] =
+                entries[
+                    windowSize
+                ] =
                     this.calculateEntry(
                         candles,
                         windowSize
@@ -1257,7 +1810,8 @@ function createPriceV1(symbol) {
                 confirmation.decision;
 
 
-            let reason = "";
+            let reason =
+                "";
 
 
             if (
@@ -1266,7 +1820,7 @@ function createPriceV1(symbol) {
             ) {
 
                 reason =
-                    "NOT_ENOUGH_200_CANDLES";
+                    "NOT_ENOUGH_TREND_CANDLES";
 
             } else if (
                 trend.direction ===
@@ -1286,12 +1840,12 @@ function createPriceV1(symbol) {
                 ) {
 
                     reason =
-                        `LONG_TREND_${trend.strength.toFixed(2)}_PULLBACK_${this.ENTRY_CONFIRMATIONS_REQUIRED}_OF_4_SHORT`;
+                        `LONG_TREND_${trend.strength.toFixed(2)}_PULLBACK_${this.ENTRY_CONFIRMATIONS_REQUIRED}_OF_${this.ENTRY_WINDOWS.length}_SHORT`;
 
                 } else {
 
                     reason =
-                        `SHORT_TREND_${trend.strength.toFixed(2)}_PULLBACK_${this.ENTRY_CONFIRMATIONS_REQUIRED}_OF_4_LONG`;
+                        `SHORT_TREND_${trend.strength.toFixed(2)}_PULLBACK_${this.ENTRY_CONFIRMATIONS_REQUIRED}_OF_${this.ENTRY_WINDOWS.length}_LONG`;
                 }
 
             } else {
@@ -1302,10 +1856,6 @@ function createPriceV1(symbol) {
 
 
             return {
-
-                // ------------------------------------------------
-                // BASIC
-                // ------------------------------------------------
 
                 timestamp:
                     new Date().toISOString(),
@@ -1320,38 +1870,13 @@ function createPriceV1(symbol) {
 
                 price,
 
-
-                // ------------------------------------------------
-                // PRICE MOVEMENT
-                // ------------------------------------------------
-
                 priceMovement,
-
-
-                // ------------------------------------------------
-                // TREND
-                // ------------------------------------------------
 
                 trend,
 
-
-                // ------------------------------------------------
-                // ENTRIES
-                // ------------------------------------------------
-
                 entries,
 
-
-                // ------------------------------------------------
-                // CONFIRMATION
-                // ------------------------------------------------
-
                 confirmation,
-
-
-                // ------------------------------------------------
-                // DECISION
-                // ------------------------------------------------
 
                 decision,
 
@@ -1359,7 +1884,6 @@ function createPriceV1(symbol) {
                     decision,
 
                 reason,
-
             };
         },
 
@@ -1382,39 +1906,36 @@ function createPriceV1(symbol) {
                 this.CYCLE_LENGTH
             ) {
 
-                this.completeCycle();
+                return this.completeCycle();
             }
+
+
+            return null;
         },
 
 
         // ====================================================
         // COMPLETE CYCLE
         // ====================================================
-        //
-        // Original:
-        //
-        // LONG:
-        //   longVotes > shortVotes
-        //   AND longVotes >= 6
-        //
-        // SHORT:
-        //   shortVotes > longVotes
-        //   AND shortVotes >= 6
-        //
-        // otherwise NEUTRAL
-        // ====================================================
 
         completeCycle() {
 
             const cycle =
-                [...this.currentCycle];
+                [
+                    ...this.currentCycle,
+                ];
 
 
-            let longVotes = 0;
+            let longVotes =
+                0;
 
-            let shortVotes = 0;
 
-            let neutralVotes = 0;
+            let shortVotes =
+                0;
+
+
+            let neutralVotes =
+                0;
 
 
             for (
@@ -1446,10 +1967,17 @@ function createPriceV1(symbol) {
                 "NEUTRAL";
 
 
+            // ------------------------------------------------
+            // KEEP EXISTING FINAL CYCLE LOGIC UNCHANGED
+            //
+            // The original strategy requires 6 votes.
+            // ------------------------------------------------
+
             if (
                 longVotes >
                 shortVotes &&
-                longVotes >= 6
+                longVotes >=
+                6
             ) {
 
                 decision =
@@ -1458,7 +1986,8 @@ function createPriceV1(symbol) {
             } else if (
                 shortVotes >
                 longVotes &&
-                shortVotes >= 6
+                shortVotes >=
+                6
             ) {
 
                 decision =
@@ -1505,7 +2034,8 @@ function createPriceV1(symbol) {
             const completedCycle = {
 
                 cycleId:
-                    this.cycleHistory.length + 1,
+                    this.cycleHistory.length +
+                    1,
 
                 symbol:
                     this.symbol,
@@ -1549,7 +2079,6 @@ function createPriceV1(symbol) {
 
                     neutral:
                         neutralVotes,
-
                 },
 
                 longVotes,
@@ -1566,7 +2095,9 @@ function createPriceV1(symbol) {
                 reason,
 
                 snapshots:
-                    [...cycle],
+                    [
+                        ...cycle,
+                    ],
             };
 
 
@@ -1601,10 +2132,20 @@ function createPriceV1(symbol) {
 
 
             // ------------------------------------------------
-            // NEW 10-CANDLE CYCLE
+            // NEW CYCLE
             // ------------------------------------------------
 
-            this.currentCycle = [];
+            this.currentCycle =
+                [];
+
+
+            // ------------------------------------------------
+            // IMPORTANT
+            //
+            // Return completed cycle to refresh().
+            // ------------------------------------------------
+
+            return completedCycle;
         },
 
 
@@ -1646,7 +2187,9 @@ function createPriceV1(symbol) {
                     this.ENTRY_REQUIRED,
 
                 entryWindows:
-                    this.ENTRY_WINDOWS,
+                    [
+                        ...this.ENTRY_WINDOWS,
+                    ],
 
                 entryConfirmationsRequired:
                     this.ENTRY_CONFIRMATIONS_REQUIRED,
@@ -1654,8 +2197,34 @@ function createPriceV1(symbol) {
                 cycleLength:
                     this.CYCLE_LENGTH,
 
+                historyLimit:
+                    this.HISTORY_LIMIT,
+
                 klineLimit:
                     this.KLINE_LIMIT,
+
+                refreshBufferMs:
+                    this.REFRESH_BUFFER_MS,
+
+
+                // --------------------------------------------
+                // EXECUTION
+                // --------------------------------------------
+
+                executionEnabled:
+                    this.executionEnabled,
+
+                executionProcessing:
+                    this.executionProcessing,
+
+                executionCount:
+                    this.executionCount,
+
+                lastExecution:
+                    this.lastExecution,
+
+                lastExecutionError:
+                    this.lastExecutionError,
 
 
                 // --------------------------------------------
@@ -1731,7 +2300,6 @@ function createPriceV1(symbol) {
 
                 lastError:
                     this.lastError,
-
             };
         },
     };
@@ -1744,19 +2312,9 @@ function createPriceV1(symbol) {
 // ============================================================
 // EXPORT
 // ============================================================
-//
-// Support both:
-//
-// const createPriceV1 = require(...)
-//
-// and:
-//
-// const { createPriceV1 } = require(...)
-// ============================================================
 
 module.exports =
     createPriceV1;
 
 module.exports.createPriceV1 =
     createPriceV1;
-

@@ -1,20 +1,26 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+
 import {
   createChart,
   CandlestickSeries,
 } from "lightweight-charts";
 
-// ============================================================
-// API
-// ============================================================
-
 const API_BASE = "http://localhost:3001";
 
-// ============================================================
+const BERLIN_TIME_ZONE = "Europe/Berlin";
+
+
+// =========================================================
 // HELPERS
-// ============================================================
+// =========================================================
 
 function formatPercent(value) {
+
   if (
     value === null ||
     value === undefined ||
@@ -23,13 +29,12 @@ function formatPercent(value) {
     return "--";
   }
 
-  const number = Number(value);
-
-  return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
+  return `${Number(value).toFixed(2)}%`;
 }
 
 
 function formatPrice(value) {
+
   if (
     value === null ||
     value === undefined ||
@@ -38,79 +43,81 @@ function formatPrice(value) {
     return "--";
   }
 
-  return Number(value).toFixed(4);
+  return Number(value).toFixed(6);
 }
 
 
-function formatTime(value) {
-  if (!value) return "--";
+function formatBerlinTime(value) {
 
-  const timestamp = Number(value);
+  if (!value) {
+    return "--";
+  }
 
-  if (Number.isNaN(timestamp)) return "--";
+  const date = new Date(value);
 
-  const date = new Date(
-    timestamp < 100000000000
-      ? timestamp * 1000
-      : timestamp
-  );
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
 
-  if (Number.isNaN(date.getTime())) return "--";
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone: BERLIN_TIME_ZONE,
 
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
+      hour: "2-digit",
+      minute: "2-digit",
+
+      second: "2-digit",
+
+      hour12: false,
+    }
+  ).format(date);
+}
+
+
+function formatBerlinDateTime(value) {
+
+  if (!value) {
+    return "--";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return new Intl.DateTimeFormat(
+    "de-DE",
+    {
+      timeZone: BERLIN_TIME_ZONE,
+
+      day: "2-digit",
+      month: "2-digit",
+
+      hour: "2-digit",
+      minute: "2-digit",
+
+      second: "2-digit",
+
+      hour12: false,
+    }
+  ).format(date);
 }
 
 
 function normalizeDirection(value) {
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "--";
-  }
 
-  if (
-    typeof value === "object"
-  ) {
-    value =
-      value.direction ??
-      value.decision ??
-      value.signal ??
-      value.result ??
-      null;
-  }
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return "--";
-  }
-
-  const text =
-    String(value).toUpperCase();
-
-  if (text.includes("LONG")) {
-    return "LONG";
-  }
-
-  if (text.includes("SHORT")) {
-    return "SHORT";
-  }
-
-  if (text.includes("NEUTRAL")) {
+  if (!value) {
     return "NEUTRAL";
   }
 
-  return text;
+  return String(value).toUpperCase();
 }
 
 
 function directionClass(value) {
+
   const direction =
     normalizeDirection(value);
 
@@ -122,17 +129,13 @@ function directionClass(value) {
     return "short";
   }
 
-  if (direction === "NEUTRAL") {
-    return "neutral";
-  }
-
-  return "";
+  return "neutral";
 }
 
 
-// ============================================================
-// PRICE V1 ENTRY READER
-// ============================================================
+// =========================================================
+// ENTRY HELPERS
+// =========================================================
 
 function getEntry(
   entries,
@@ -143,198 +146,145 @@ function getEntry(
     return null;
   }
 
+  if (Array.isArray(entries)) {
 
-  if (
-    !Array.isArray(entries) &&
-    typeof entries === "object"
-  ) {
-
-    const direct =
-      entries[windowSize] ??
-      entries[String(windowSize)];
-
-
-    if (direct) {
-      return direct;
-    }
-  }
-
-
-  if (
-    Array.isArray(entries)
-  ) {
-
-    return (
-      entries.find(
-        (entry) =>
-          Number(
-            entry?.window ??
-            entry?.candles ??
-            entry?.period ??
-            entry?.length
-          ) ===
-          Number(windowSize)
-      ) || null
+    return entries.find(
+      (entry) =>
+        Number(entry?.window) ===
+        Number(windowSize)
     );
   }
 
-
-  return null;
-}
-
-
-function getEntryDirection(entry) {
-
-  if (!entry) {
-    return "--";
-  }
-
-  return normalizeDirection(
-    entry.direction ??
-    entry.decision ??
-    entry.signal ??
-    entry.trend ??
-    entry.result
+  return (
+    entries[windowSize] ||
+    entries[String(windowSize)] ||
+    null
   );
 }
 
 
-function getEntryStrength(entry) {
+function getEntryDirection(
+  entries,
+  windowSize
+) {
 
-  if (!entry) {
-    return null;
-  }
-
-  const value =
-    entry.strength ??
-    entry.score ??
-    entry.percentage ??
-    entry.percent ??
-    entry.change;
-
-
-  if (
-    value === null ||
-    value === undefined
-  ) {
-    return null;
-  }
-
-
-  const number =
-    Number(value);
-
-
-  return Number.isFinite(number)
-    ? number
-    : null;
-}
-
-
-function getEntryPassed(entry) {
-
-  if (!entry) {
-    return null;
-  }
-
-  if (
-    typeof entry.passed ===
-    "boolean"
-  ) {
-    return entry.passed;
-  }
-
-  if (
-    typeof entry.confirmed ===
-    "boolean"
-  ) {
-    return entry.confirmed;
-  }
-
-  if (
-    typeof entry.pass ===
-    "boolean"
-  ) {
-    return entry.pass;
-  }
-
-  return null;
-}
-
-
-// ============================================================
-// ENTRY CELL
-// ============================================================
-
-function EntryCell({
-  entry,
-}) {
-
-  if (!entry) {
-
-    return (
-      <div className="price-entry-cell">
-        <div className="price-entry-direction neutral">
-          --
-        </div>
-      </div>
+  const entry =
+    getEntry(
+      entries,
+      windowSize
     );
-  }
-
-
-  const direction =
-    getEntryDirection(entry);
-
-
-  const strength =
-    getEntryStrength(entry);
-
-
-  const passed =
-    getEntryPassed(entry);
-
 
   return (
-    <div className="price-entry-cell">
+    entry?.direction ||
+    entry?.rawDirection ||
+    "NEUTRAL"
+  );
+}
+
+
+function getEntryStrength(
+  entries,
+  windowSize
+) {
+
+  const entry =
+    getEntry(
+      entries,
+      windowSize
+    );
+
+  if (!entry) {
+    return null;
+  }
+
+  return entry.strength;
+}
+
+
+function getEntryPassed(
+  entries,
+  windowSize
+) {
+
+  const direction =
+    getEntryDirection(
+      entries,
+      windowSize
+    );
+
+  return (
+    direction === "LONG" ||
+    direction === "SHORT"
+  );
+}
+
+
+// =========================================================
+// ENTRY CELL
+// =========================================================
+
+function EntryCell({
+  entries,
+  windowSize,
+}) {
+
+  const direction =
+    getEntryDirection(
+      entries,
+      windowSize
+    );
+
+  const strength =
+    getEntryStrength(
+      entries,
+      windowSize
+    );
+
+  const passed =
+    getEntryPassed(
+      entries,
+      windowSize
+    );
+
+  return (
+    <div className="entry-cell">
+
+      <div className="entry-window">
+        {windowSize}
+      </div>
 
       <div
-        className={`price-entry-direction ${directionClass(
+        className={`entry-direction ${directionClass(
           direction
         )}`}
       >
         {direction}
       </div>
 
+      <div className="entry-strength">
+        {formatPercent(strength)}
+      </div>
 
-      {strength !== null && (
-        <div className="price-entry-strength">
-          {formatPercent(strength)}
-        </div>
-      )}
-
-
-      {passed !== null && (
-        <div
-          className={`price-entry-pass ${
-            passed
-              ? "passed"
-              : "failed"
-          }`}
-        >
-          {passed
-            ? "PASS"
-            : "FAIL"}
-        </div>
-      )}
+      <div
+        className={`entry-status ${
+          passed
+            ? "passed"
+            : "waiting"
+        }`}
+      >
+        {passed
+          ? "READY"
+          : "WAITING"}
+      </div>
 
     </div>
   );
 }
 
 
-// ============================================================
-// PRICE CHART
-// ============================================================
+// =========================================================
+// CHART
+// =========================================================
 
 function PriceChart({
   candles,
@@ -349,18 +299,51 @@ function PriceChart({
   const candleSeriesRef =
     useRef(null);
 
+  const lastChartTimeRef =
+    useRef(null);
+
+
+  // =======================================================
+  // CREATE CHART
+  // =======================================================
 
   useEffect(() => {
 
-    if (
-      !chartContainerRef.current
-    ) {
+    if (!chartContainerRef.current) {
       return;
     }
 
-
     const container =
       chartContainerRef.current;
+
+
+    function berlinTimeFormatter(time) {
+
+      if (
+        typeof time !==
+        "number"
+      ) {
+        return "";
+      }
+
+      const date =
+        new Date(
+          time * 1000
+        );
+
+      return new Intl.DateTimeFormat(
+        "de-DE",
+        {
+          timeZone:
+            BERLIN_TIME_ZONE,
+
+          hour: "2-digit",
+          minute: "2-digit",
+
+          hour12: false,
+        }
+      ).format(date);
+    }
 
 
     const chart =
@@ -368,10 +351,9 @@ function PriceChart({
         container,
         {
           width:
-            container.clientWidth ||
-            800,
+            container.clientWidth,
 
-          height: 320,
+          height: 420,
 
           layout: {
             background: {
@@ -380,7 +362,7 @@ function PriceChart({
             },
 
             textColor:
-              "#9ca3af",
+              "#b8c0cc",
           },
 
           grid: {
@@ -397,18 +379,30 @@ function PriceChart({
 
           rightPriceScale: {
             borderColor:
-              "rgba(255,255,255,0.08)",
+              "rgba(255,255,255,0.10)",
           },
 
           timeScale: {
             borderColor:
-              "rgba(255,255,255,0.08)",
+              "rgba(255,255,255,0.10)",
 
             timeVisible:
               true,
 
             secondsVisible:
               false,
+
+            tickMarkFormatter:
+              berlinTimeFormatter,
+          },
+
+          localization: {
+            timeFormatter:
+              berlinTimeFormatter,
+          },
+
+          crosshair: {
+            mode: 0,
           },
         }
       );
@@ -419,22 +413,19 @@ function PriceChart({
         CandlestickSeries,
         {
           upColor:
-            "#22c55e",
+            "#26a69a",
 
           downColor:
-            "#ef4444",
+            "#ef5350",
 
-          borderUpColor:
-            "#22c55e",
-
-          borderDownColor:
-            "#ef4444",
+          borderVisible:
+            false,
 
           wickUpColor:
-            "#22c55e",
+            "#26a69a",
 
           wickDownColor:
-            "#ef4444",
+            "#ef5350",
         }
       );
 
@@ -446,6 +437,10 @@ function PriceChart({
       candleSeries;
 
 
+    // =====================================================
+    // RESIZE
+    // =====================================================
+
     const resizeObserver =
       new ResizeObserver(
         () => {
@@ -456,13 +451,13 @@ function PriceChart({
             return;
           }
 
-
           chart.applyOptions({
             width:
               chartContainerRef
                 .current
                 .clientWidth,
           });
+
         }
       );
 
@@ -471,6 +466,10 @@ function PriceChart({
       container
     );
 
+
+    // =====================================================
+    // CLEANUP
+    // =====================================================
 
     return () => {
 
@@ -483,10 +482,17 @@ function PriceChart({
 
       candleSeriesRef.current =
         null;
+
+      lastChartTimeRef.current =
+        null;
     };
 
   }, []);
 
+
+  // =======================================================
+  // UPDATE CHART
+  // =======================================================
 
   useEffect(() => {
 
@@ -496,56 +502,45 @@ function PriceChart({
       return;
     }
 
-
     if (
       !Array.isArray(candles) ||
       candles.length === 0
     ) {
-
-      candleSeriesRef.current.setData(
-        []
-      );
-
       return;
     }
 
 
-    const chartData =
+    const normalized =
       candles
-        .map((candle) => {
+        .map(
+          (candle) => ({
 
-          const rawTime =
-            Number(candle.time);
-
-
-          const time =
-            rawTime >
-            100000000000
-              ? Math.floor(
-                  rawTime / 1000
-                )
-              : Math.floor(
-                  rawTime
-                );
-
-
-          return {
-
-            time,
+            time:
+              Number(
+                candle.time
+              ),
 
             open:
-              Number(candle.open),
+              Number(
+                candle.open
+              ),
 
             high:
-              Number(candle.high),
+              Number(
+                candle.high
+              ),
 
             low:
-              Number(candle.low),
+              Number(
+                candle.low
+              ),
 
             close:
-              Number(candle.close),
-          };
-        })
+              Number(
+                candle.close
+              ),
+          })
+        )
         .filter(
           (candle) =>
             Number.isFinite(
@@ -566,57 +561,109 @@ function PriceChart({
         )
         .sort(
           (a, b) =>
-            a.time - b.time
+            a.time -
+            b.time
         );
+
+
+    if (
+      normalized.length === 0
+    ) {
+      return;
+    }
 
 
     const uniqueData = [];
 
-
     for (
-      const candle of chartData
+      const candle of normalized
     ) {
 
-      const previous =
+      const last =
         uniqueData[
           uniqueData.length - 1
         ];
 
-
       if (
-        !previous ||
-        previous.time !==
+        last &&
+        last.time ===
           candle.time
       ) {
-
-        uniqueData.push(
-          candle
-        );
-
-      } else {
 
         uniqueData[
           uniqueData.length - 1
         ] =
           candle;
+
+      } else {
+
+        uniqueData.push(
+          candle
+        );
       }
     }
 
 
-    candleSeriesRef.current.setData(
-      uniqueData
-    );
+    const latestCandle =
+      uniqueData[
+        uniqueData.length - 1
+      ];
 
+
+    // =====================================================
+    // FIRST LOAD
+    // =====================================================
 
     if (
-      chartRef.current &&
-      uniqueData.length > 0
+      lastChartTimeRef.current ===
+      null
     ) {
 
-      chartRef.current
-        .timeScale()
-        .fitContent();
+      candleSeriesRef.current
+        .setData(
+          uniqueData
+        );
+
+      lastChartTimeRef.current =
+        latestCandle.time;
+
+      if (
+        chartRef.current
+      ) {
+
+        chartRef.current
+          .timeScale()
+          .fitContent();
+
+      }
+
+      return;
     }
+
+
+    // =====================================================
+    // LIVE UPDATE
+    // =====================================================
+
+    for (
+      const candle of uniqueData
+    ) {
+
+      if (
+        candle.time >=
+        lastChartTimeRef.current
+      ) {
+
+        candleSeriesRef.current
+          .update(
+            candle
+          );
+      }
+    }
+
+
+    lastChartTimeRef.current =
+      latestCandle.time;
 
   }, [candles]);
 
@@ -625,11 +672,16 @@ function PriceChart({
     <div className="price-chart-wrapper">
 
       <div
-        ref={chartContainerRef}
+        ref={
+          chartContainerRef
+        }
         className="price-chart"
         style={{
-          width: "100%",
-          minHeight: "320px",
+          width:
+            "100%",
+
+          height:
+            "420px",
         }}
       />
 
@@ -638,27 +690,289 @@ function PriceChart({
 }
 
 
-// ============================================================
-// MAIN PANEL
-// ============================================================
+// =========================================================
+// HISTORY HELPERS
+// =========================================================
+
+function getCycleTrend(
+  cycle
+) {
+
+  return (
+    cycle?.trend?.direction ||
+    cycle?.trendDirection ||
+    cycle?.trend ||
+    "NEUTRAL"
+  );
+}
+
+
+function getCycleTrendStrength(
+  cycle
+) {
+
+  return (
+    cycle?.trend?.strength ??
+    cycle?.trendStrength ??
+    null
+  );
+}
+
+
+function getCycleEntryDirection(
+  cycle,
+  windowSize
+) {
+
+  const entries =
+    cycle?.entries ||
+    {};
+
+  return getEntryDirection(
+    entries,
+    windowSize
+  );
+}
+
+
+function getCycleEntryStrength(
+  cycle,
+  windowSize
+) {
+
+  const entries =
+    cycle?.entries ||
+    {};
+
+  return getEntryStrength(
+    entries,
+    windowSize
+  );
+}
+
+
+function getCycleDecision(
+  cycle
+) {
+
+  return (
+    cycle?.decision ||
+    cycle?.finalDecision ||
+    cycle?.direction ||
+    "NEUTRAL"
+  );
+}
+
+
+function getCycleTime(
+  cycle
+) {
+
+  return (
+    cycle?.completedAt ||
+    cycle?.timestamp ||
+    cycle?.endTime ||
+    cycle?.lastTimestamp ||
+    cycle?.snapshots?.[
+      cycle.snapshots.length - 1
+    ]?.timestamp ||
+    null
+  );
+}
+
+
+// =========================================================
+// PREVIOUS CYCLE ROW
+// =========================================================
+
+function PreviousCycleRow({
+  cycle,
+  selectedSymbol,
+  entryWindows,
+}) {
+
+  const decision =
+    getCycleDecision(
+      cycle
+    );
+
+  const trend =
+    getCycleTrend(
+      cycle
+    );
+
+  const trendStrength =
+    getCycleTrendStrength(
+      cycle
+    );
+
+
+  return (
+    <tr>
+
+      <td>
+        {formatBerlinDateTime(
+          getCycleTime(
+            cycle
+          )
+        )}
+      </td>
+
+
+      <td className="coin-cell">
+        {cycle?.symbol ||
+          selectedSymbol ||
+          "--"}
+      </td>
+
+
+      <td>
+
+        <span
+          className={`decision-value ${directionClass(
+            trend
+          )}`}
+        >
+
+          {trend}
+
+          {trendStrength !==
+            null && (
+
+            <small
+              style={{
+                marginLeft:
+                  "4px",
+              }}
+            >
+              {formatPercent(
+                trendStrength
+              )}
+            </small>
+
+          )}
+
+        </span>
+
+      </td>
+
+
+      {
+        entryWindows.map(
+          (windowSize) => {
+
+            const direction =
+              getCycleEntryDirection(
+                cycle,
+                windowSize
+              );
+
+            const strength =
+              getCycleEntryStrength(
+                cycle,
+                windowSize
+              );
+
+
+            return (
+
+              <td
+                key={
+                  windowSize
+                }
+              >
+
+                <span
+                  className={`decision-value ${directionClass(
+                    direction
+                  )}`}
+                >
+
+                  {direction}
+
+                  {strength !==
+                    null && (
+
+                    <small
+                      style={{
+                        marginLeft:
+                          "4px",
+                      }}
+                    >
+                      {formatPercent(
+                        strength
+                      )}
+                    </small>
+
+                  )}
+
+                </span>
+
+              </td>
+
+            );
+
+          }
+        )
+      }
+
+
+      <td>
+
+        <span
+          className={`decision-value ${directionClass(
+            decision
+          )}`}
+        >
+          {normalizeDirection(
+            decision
+          )}
+        </span>
+
+      </td>
+
+
+      <td>
+
+        <span className="cycle-reason">
+          {
+            cycle?.reason ||
+            cycle?.finalReason ||
+            "--"
+          }
+        </span>
+
+      </td>
+
+    </tr>
+  );
+}
+
+
+// =========================================================
+// MAIN PRICE V1 PANEL
+// =========================================================
 
 export default function PriceV1Panel({
   bot,
+  instances = [],
   selectedSymbol,
   onSelectSymbol,
 }) {
 
-  const [instances, setInstances] =
-    useState({});
+  // =======================================================
+  // LIVE INSTANCE LIST
+  // =======================================================
 
+  const [
+    liveInstances,
+    setLiveInstances,
+  ] = useState([]);
 
-  // ==========================================================
-  // LOAD PRICE V1 INSTANCES
-  // ==========================================================
 
   useEffect(() => {
 
-    let cancelled = false;
+    let mounted = true;
 
 
     async function loadInstances() {
@@ -667,14 +981,24 @@ export default function PriceV1Panel({
 
         const response =
           await fetch(
-            `${API_BASE}/api/market/instances`
+            `${API_BASE}/api/bots/status`,
+            {
+              cache:
+                "no-store",
+            }
           );
 
 
-        if (!response.ok) {
-          throw new Error(
-            `HTTP ${response.status}`
+        if (
+          !response.ok
+        ) {
+
+          console.error(
+            "Price V1 status HTTP error:",
+            response.status
           );
+
+          return;
         }
 
 
@@ -682,75 +1006,68 @@ export default function PriceV1Panel({
           await response.json();
 
 
-        if (
-          cancelled
-        ) {
+        if (!mounted) {
           return;
         }
 
 
         const rawInstances =
-          result?.instances;
+          result?.status
+            ?.instances ||
+          {};
 
 
-        if (
-          rawInstances &&
-          typeof rawInstances ===
-            "object"
-        ) {
+        const priceInstances =
+          Object.entries(
+            rawInstances
+          )
+            .map(
+              ([
+                symbol,
+                instance,
+              ]) => ({
 
-          const priceInstances = {};
+                symbol,
 
+                botName:
+                  instance?.bot ||
+                  "",
 
-          for (
-            const [
-              symbol,
-              instance
-            ] of Object.entries(
-              rawInstances
+                status:
+                  instance?.status ||
+                  "unknown",
+
+                statusData:
+                  instance
+                    ?.statusData ||
+                  null,
+              })
             )
-          ) {
-
-            if (
-              instance?.bot ===
-              "pricev1"
-            ) {
-
-              priceInstances[
-                String(symbol)
-                  .trim()
-                  .toUpperCase()
-              ] =
-                instance;
-            }
-          }
+            .filter(
+              (instance) =>
+                instance.botName ===
+                "pricev1"
+            );
 
 
-          setInstances(
-            priceInstances
-          );
-
-        } else {
-
-          setInstances({});
-        }
+        setLiveInstances(
+          priceInstances
+        );
 
       } catch (error) {
 
         console.error(
-          "Price V1 instance error:",
+          "Price V1 instance polling error:",
           error
         );
-
       }
-
     }
 
 
     loadInstances();
 
 
-    const timer =
+    const interval =
       setInterval(
         loadInstances,
         2000
@@ -759,106 +1076,114 @@ export default function PriceV1Panel({
 
     return () => {
 
-      cancelled = true;
+      mounted = false;
 
-      clearInterval(timer);
+      clearInterval(
+        interval
+      );
 
     };
 
   }, []);
 
 
-  // ==========================================================
-  // ADD CURRENT BOT IF AVAILABLE
-  // ==========================================================
+  // =======================================================
+  // COMBINE INSTANCE LIST
+  // =======================================================
 
   const allInstances =
     useMemo(() => {
 
-      const result = {
-        ...instances,
-      };
+      const map =
+        new Map();
 
 
-      if (
-        bot &&
-        bot.symbol &&
-        bot.botName ===
-          "pricev1"
+      for (
+        const instance of instances
       ) {
 
-        const symbol =
-          String(
-            bot.symbol
-          )
-            .trim()
-            .toUpperCase();
-
-
         if (
-          symbol
+          !instance?.symbol
         ) {
-
-          result[symbol] =
-            bot;
+          continue;
         }
+
+
+        map.set(
+          String(
+            instance.symbol
+          ).toUpperCase(),
+          instance
+        );
       }
 
 
-      return result;
+      for (
+        const instance of liveInstances
+      ) {
+
+        if (
+          !instance?.symbol
+        ) {
+          continue;
+        }
+
+
+        map.set(
+          String(
+            instance.symbol
+          ).toUpperCase(),
+          instance
+        );
+      }
+
+
+      if (
+        bot?.symbol
+      ) {
+
+        map.set(
+          String(
+            bot.symbol
+          ).toUpperCase(),
+          bot
+        );
+      }
+
+
+      return Array.from(
+        map.values()
+      ).sort(
+        (a, b) =>
+          String(
+            a.symbol
+          ).localeCompare(
+            String(
+              b.symbol
+            )
+          )
+      );
 
     }, [
       instances,
+      liveInstances,
       bot,
     ]);
 
 
-  const instanceList =
-    useMemo(() => {
-
-      return Object.entries(
-        allInstances
-      )
-        .map(
-          ([symbol, instance]) => ({
-            symbol,
-            ...instance,
-          })
-        )
-        .sort(
-          (a, b) =>
-            a.symbol.localeCompare(
-              b.symbol
-            )
-        );
-
-    }, [allInstances]);
-
-
-  // ==========================================================
+  // =======================================================
   // SELECTED INSTANCE
-  // ==========================================================
+  // =======================================================
 
   const selectedInstance =
     useMemo(() => {
 
       if (
-        selectedSymbol &&
-        allInstances[
-          selectedSymbol
-        ]
+        selectedSymbol
       ) {
 
-        return allInstances[
-          selectedSymbol
-        ];
-      }
-
-
-      if (selectedSymbol) {
-
-        const matching =
-          instanceList.find(
+        const selected =
+          allInstances.find(
             (instance) =>
               String(
                 instance.symbol
@@ -869,40 +1194,185 @@ export default function PriceV1Panel({
           );
 
 
-        if (matching) {
-          return matching;
+        if (selected) {
+          return selected;
         }
       }
 
 
       return (
-        instanceList[0] ||
+        allInstances[0] ||
         null
       );
 
     }, [
-      selectedSymbol,
       allInstances,
-      instanceList,
+      selectedSymbol,
     ]);
 
 
+  // =======================================================
+  // SELECTED NODE DATA
+  // =======================================================
+
+  const [
+    selectedNodeData,
+    setSelectedNodeData,
+  ] = useState(null);
+
+
+  useEffect(() => {
+
+    let mounted = true;
+
+
+    if (
+      !selectedSymbol
+    ) {
+
+      setSelectedNodeData(
+        null
+      );
+
+      return () => {
+        mounted = false;
+      };
+    }
+
+
+    async function loadNodeStatus() {
+
+      try {
+
+        const cleanSymbol =
+          String(
+            selectedSymbol
+          )
+            .trim()
+            .toUpperCase();
+
+
+        const response =
+          await fetch(
+            `${API_BASE}/api/bots/status`,
+            {
+              cache:
+                "no-store",
+            }
+          );
+
+
+        if (
+          !response.ok
+        ) {
+
+          console.error(
+            `Price V1 ${cleanSymbol} HTTP error:`,
+            response.status
+          );
+
+          return;
+        }
+
+
+        const result =
+          await response.json();
+
+
+        if (!mounted) {
+          return;
+        }
+
+
+        const instance =
+          result?.status
+            ?.instances?.[
+              cleanSymbol
+            ];
+
+
+        if (
+          instance
+        ) {
+
+          setSelectedNodeData({
+
+            success:
+              true,
+
+            symbol:
+              cleanSymbol,
+
+            running:
+              instance.status ===
+              "running",
+
+            statusData:
+              instance.statusData ||
+              null,
+
+          });
+
+        }
+
+      } catch (error) {
+
+        console.error(
+          "Selected Price V1 polling error:",
+          error
+        );
+
+      }
+    }
+
+
+    loadNodeStatus();
+
+
+    const interval =
+      setInterval(
+        loadNodeStatus,
+        2000
+      );
+
+
+    return () => {
+
+      mounted = false;
+
+      clearInterval(
+        interval
+      );
+
+    };
+
+  }, [
+    selectedSymbol,
+  ]);
+
+
+  // =======================================================
+  // SINGLE SOURCE OF TRUTH
+  // =======================================================
+
   const data =
+    selectedNodeData?.statusData ||
     selectedInstance?.statusData ||
-    selectedInstance ||
     bot?.statusData ||
+    selectedInstance ||
     bot ||
     null;
 
 
-  // ==========================================================
+  // =======================================================
   // BASIC DATA
-  // ==========================================================
+  // =======================================================
 
   const symbol =
+    selectedNodeData?.symbol ||
     data?.symbol ||
     selectedInstance?.symbol ||
-    selectedSymbol ||
+    bot?.symbol ||
     "--";
 
 
@@ -914,16 +1384,17 @@ export default function PriceV1Panel({
       : [];
 
 
-  // ==========================================================
-  // CURRENT CYCLE
-  // ==========================================================
-
   const currentCycle =
     Array.isArray(
       data?.currentCycle
     )
       ? data.currentCycle
       : [];
+
+
+  const lastSnapshot =
+    data?.lastSnapshot ||
+    null;
 
 
   const cycleHistory =
@@ -934,181 +1405,308 @@ export default function PriceV1Panel({
       : [];
 
 
-  // ==========================================================
-  // DECISION HISTORY
-  // ==========================================================
+  // =======================================================
+  // DYNAMIC PRICE V1 SETTINGS
+  //
+  // These come from the running bot instance.
+  //
+  // No hard-coded strategy windows in the UI.
+  // =======================================================
 
-  const decisionHistory =
-    [...currentCycle].reverse();
+  const trendCandles =
+    Number(
+      data?.trendCandles ||
+      200
+    );
 
 
-  // ==========================================================
-  // LAST SNAPSHOT
-  // ==========================================================
+  const entryWindows =
+    useMemo(() => {
 
-  const lastSnapshot =
-    data?.lastSnapshot ||
-    decisionHistory[0] ||
-    null;
+      if (
+        Array.isArray(
+          data?.entryWindows
+        ) &&
+        data.entryWindows.length > 0
+      ) {
+
+        return data.entryWindows
+          .map(Number)
+          .filter(
+            Number.isInteger
+          );
+
+      }
+
+
+      return [
+        15,
+        20,
+        30,
+        60,
+      ];
+
+    }, [
+      data?.entryWindows,
+    ]);
+
+
+  const cycleLength =
+    Number(
+      data?.cycleLength ||
+      10
+    );
+
+
+  const trendRequired =
+    Number(
+      data?.trendRequired ??
+      53
+    );
+
+
+  const entryRequired =
+    Number(
+      data?.entryRequired ??
+      50
+    );
+
+
+  const entryConfirmationsRequired =
+    Number(
+      data?.entryConfirmationsRequired ??
+      3
+    );
+
+
+  // =======================================================
+  // PREVIOUS CYCLES
+  //
+  // IMPORTANT:
+  //
+  // bot_pricev1 uses unshift(), so cycleHistory is already
+  // newest -> oldest.
+  //
+  // DO NOT reverse it.
+  // =======================================================
+
+  const previousCycles =
+    useMemo(() => {
+
+      return [
+        ...cycleHistory,
+      ];
+
+    }, [
+      cycleHistory,
+    ]);
 
 
   const lastCycle =
+    previousCycles[0] ||
     data?.lastCycle ||
     null;
 
 
-  // ==========================================================
-  // CYCLE PROGRESS
-  // ==========================================================
-
-  const currentCycleNumber =
-    data?.cycleNumber ??
-    Math.floor(
-      cycleHistory.length + 1
-    );
-
-
   const cycleProgress =
-    data?.cycleProgress ??
     currentCycle.length;
 
 
-  const cycleLength =
-    data?.cycleLength ??
-    10;
+  // =======================================================
+  // CURRENT SNAPSHOT
+  // =======================================================
 
-
-  // ==========================================================
-  // FINAL DECISION
-  // ==========================================================
-
-  const finalDecision =
-    lastSnapshot?.finalDecision ??
-    lastSnapshot?.decision ??
-    "--";
-
-
-  // ==========================================================
-  // PRICE
-  // ==========================================================
-
-  const currentPrice =
-    lastSnapshot?.price ??
-    data?.price ??
+  const trend =
+    data?.trend ||
+    lastSnapshot?.trend ||
     null;
 
 
-  // ==========================================================
-  // PRICE MOVEMENT
-  // ==========================================================
-
-  const priceMovement =
-    lastSnapshot?.priceMovement ||
-    data?.priceMovement ||
+  const entries =
+    data?.entries ||
+    lastSnapshot?.entries ||
     {};
 
 
+  const confirmation =
+    lastSnapshot?.confirmation ||
+    data?.confirmation ||
+    null;
+
+
+  const finalDecision =
+    data?.finalDecision ||
+    lastSnapshot?.finalDecision ||
+    data?.decision ||
+    lastSnapshot?.decision ||
+    "NEUTRAL";
+
+
+  const currentPrice =
+    data?.price ??
+    lastSnapshot?.price ??
+    null;
+
+
+  const priceMovement =
+    data?.priceMovement ||
+    lastSnapshot?.priceMovement ||
+    {};
+
+
+  // =======================================================
+  // TREND
+  // =======================================================
+
+  const trendDirection =
+    trend?.direction ||
+    trend?.rawDirection ||
+    "NEUTRAL";
+
+
+  const trendStrength =
+    trend?.strength ??
+    null;
+
+
+  const trendUpMovement =
+    trend?.upMovement ??
+    null;
+
+
+  const trendDownMovement =
+    trend?.downMovement ??
+    null;
+
+
+  const hasTrendCandles =
+    candles.length >=
+      trendCandles + 1 ||
+    Boolean(trend);
+
+
+  // =======================================================
+  // CONFIRMATION
+  // =======================================================
+
+  const confirmationDecision =
+    confirmation?.decision ||
+    "NEUTRAL";
+
+
+  const longVotes =
+    confirmation?.longVotes ??
+    0;
+
+
+  const shortVotes =
+    confirmation?.shortVotes ??
+    0;
+
+
+  const neutralVotes =
+    confirmation?.neutralVotes ??
+    0;
+
+
+  const rawLongVotes =
+    confirmation?.rawLongVotes ??
+    0;
+
+
+  const rawShortVotes =
+    confirmation?.rawShortVotes ??
+    0;
+
+
+  const lastConfirmationTime =
+    lastSnapshot?.timestamp ||
+    null;
+
+
+  // =======================================================
+  // PRICE MOVEMENT
+  //
+  // These remain the existing 5/10/20/60 display values.
+  // They are separate from ENTRY_WINDOWS.
+  // =======================================================
+
   const movement5 =
-    priceMovement?.[5] ??
-    priceMovement?.["5"] ??
+    priceMovement["5"] ??
+    priceMovement[5] ??
     null;
 
 
   const movement10 =
-    priceMovement?.[10] ??
-    priceMovement?.["10"] ??
+    priceMovement["10"] ??
+    priceMovement[10] ??
     null;
 
 
   const movement20 =
-    priceMovement?.[20] ??
-    priceMovement?.["20"] ??
+    priceMovement["20"] ??
+    priceMovement[20] ??
     null;
 
 
   const movement60 =
-    priceMovement?.[60] ??
-    priceMovement?.["60"] ??
+    priceMovement["60"] ??
+    priceMovement[60] ??
     null;
 
 
-  // ==========================================================
-  // CURRENT ENTRIES
-  // ==========================================================
-
-  const currentEntries =
-    lastSnapshot?.entries ||
-    data?.entries ||
-    {};
-
-
-  const entry15 =
-    getEntry(
-      currentEntries,
-      15
-    );
-
-
-  const entry20 =
-    getEntry(
-      currentEntries,
-      20
-    );
-
-
-  const entry30 =
-    getEntry(
-      currentEntries,
-      30
-    );
-
-
-  const entry60 =
-    getEntry(
-      currentEntries,
-      60
-    );
-
+  // =======================================================
+  // RENDER
+  // =======================================================
 
   return (
 
     <div className="price-v1-panel">
 
-      {/* ================================================== */}
-      {/* HEADER */}
-      {/* ================================================== */}
+
+      {/* ==================================================
+          HEADER
+          ================================================== */}
 
       <div className="panel-header">
 
         <div>
 
-          <h2>
-            Price Movement System
-          </h2>
+          <div className="panel-title">
+            PRICE V1
+          </div>
 
-          <p>
-            1-minute price-only trend and entry analysis
-          </p>
+          <div className="panel-subtitle">
+            PRICE ONLY
+          </div>
 
         </div>
 
 
-        <div className="status-badge">
-
-          {data?.status
-            ? String(
-                data.status
-              ).toUpperCase()
-            : "UNKNOWN"}
-
+        <div
+          className={`bot-status ${
+            selectedNodeData?.running ||
+            selectedInstance?.status ===
+              "running"
+              ? "running"
+              : "stopped"
+          }`}
+        >
+          {
+            selectedNodeData?.running ||
+            selectedInstance?.status ===
+              "running"
+              ? "RUNNING"
+              : "STOPPED"
+          }
         </div>
 
       </div>
 
 
-      {/* ================================================== */}
-      {/* CONTROLS */}
-      {/* ================================================== */}
+      {/* ==================================================
+          CONTROLS
+          ================================================== */}
 
       <div className="price-v1-controls">
 
@@ -1118,17 +1716,18 @@ export default function PriceV1Panel({
             SYMBOL
           </div>
 
-
           <select
             value={
-              selectedInstance?.symbol ||
-              symbol ||
+              selectedSymbol ||
               ""
             }
-            onChange={(event) => {
+            onChange={(
+              event
+            ) => {
 
               if (
-                onSelectSymbol
+                typeof onSelectSymbol ===
+                "function"
               ) {
 
                 onSelectSymbol(
@@ -1139,32 +1738,37 @@ export default function PriceV1Panel({
             }}
           >
 
-            {instanceList.length === 0 ? (
+            {
+              allInstances.length ===
+              0 ? (
 
-              <option value="">
-                No Price V1 bots
-              </option>
+                <option value="">
+                  No Price V1 bots
+                </option>
 
-            ) : (
+              ) : (
 
-              instanceList.map(
-                (instance) => (
+                allInstances.map(
+                  (instance) => (
 
-                  <option
-                    key={
-                      instance.symbol
-                    }
-                    value={
-                      instance.symbol
-                    }
-                  >
-                    {instance.symbol}
-                  </option>
+                    <option
+                      key={
+                        instance.symbol
+                      }
+                      value={
+                        instance.symbol
+                      }
+                    >
+                      {
+                        instance.symbol
+                      }
+                    </option>
 
+                  )
                 )
-              )
 
-            )}
+              )
+            }
 
           </select>
 
@@ -1178,7 +1782,10 @@ export default function PriceV1Panel({
           </div>
 
           <div className="control-value">
-            {data?.timeframe || "1m"}
+            {
+              data?.timeframe ||
+              "1m"
+            }
           </div>
 
         </div>
@@ -1191,7 +1798,9 @@ export default function PriceV1Panel({
           </div>
 
           <div className="control-value">
-            {candles.length || 1000}
+            {
+              candles.length
+            }
           </div>
 
         </div>
@@ -1199,9 +1808,9 @@ export default function PriceV1Panel({
       </div>
 
 
-      {/* ================================================== */}
-      {/* SUMMARY */}
-      {/* ================================================== */}
+      {/* ==================================================
+          SUMMARY
+          ================================================== */}
 
       <div className="price-v1-summary">
 
@@ -1225,11 +1834,9 @@ export default function PriceV1Panel({
           </div>
 
           <div className="summary-value">
-
             {cycleProgress}
-            {" / "}
+            /
             {cycleLength}
-
           </div>
 
         </div>
@@ -1246,11 +1853,11 @@ export default function PriceV1Panel({
               finalDecision
             )}`}
           >
-
-            {normalizeDirection(
-              finalDecision
-            )}
-
+            {
+              normalizeDirection(
+                finalDecision
+              )
+            }
           </div>
 
         </div>
@@ -1258,497 +1865,967 @@ export default function PriceV1Panel({
       </div>
 
 
-      {/* ================================================== */}
-      {/* PRICE MOVEMENT */}
-      {/* ================================================== */}
+      {/* ==================================================
+          PRICE
+          ================================================== */}
 
-      <section className="price-section">
+      <div className="price-v1-price-card">
 
-        <div className="section-title">
-          Price Movement
+        <div className="price-card-label">
+          CURRENT PRICE
         </div>
 
+        <div className="price-card-value">
+          {
+            formatPrice(
+              currentPrice
+            )
+          }
+        </div>
 
-        <div className="movement-grid">
+      </div>
 
-          <div className="movement-card">
 
-            <div className="movement-label">
-              CURRENT PRICE
-            </div>
+      {/* ==================================================
+          PRICE MOVEMENT
+          ================================================== */}
 
-            <div className="movement-value">
-              {formatPrice(
-                currentPrice
-              )}
-            </div>
+      <div className="section-title">
+        PRICE MOVEMENT
+      </div>
 
+
+      <div className="price-v1-summary movement-summary">
+
+        <div className="summary-box">
+
+          <div className="summary-label">
+            5 CANDLES
           </div>
 
-
-          <div className="movement-card">
-
-            <div className="movement-label">
-              5 CANDLES
-            </div>
-
-            <div className="movement-value">
-              {formatPercent(
+          <div
+            className={`summary-value ${
+              movement5 ===
+              null
+                ? "neutral"
+                : movement5 >= 0
+                ? "long"
+                : "short"
+            }`}
+          >
+            {
+              formatPercent(
                 movement5
-              )}
-            </div>
-
+              )
+            }
           </div>
 
+        </div>
 
-          <div className="movement-card">
 
-            <div className="movement-label">
-              10 CANDLES
-            </div>
+        <div className="summary-box">
 
-            <div className="movement-value">
-              {formatPercent(
+          <div className="summary-label">
+            10 CANDLES
+          </div>
+
+          <div
+            className={`summary-value ${
+              movement10 ===
+              null
+                ? "neutral"
+                : movement10 >= 0
+                ? "long"
+                : "short"
+            }`}
+          >
+            {
+              formatPercent(
                 movement10
-              )}
-            </div>
-
+              )
+            }
           </div>
 
+        </div>
 
-          <div className="movement-card">
 
-            <div className="movement-label">
-              20 CANDLES
-            </div>
+        <div className="summary-box">
 
-            <div className="movement-value">
-              {formatPercent(
+          <div className="summary-label">
+            20 CANDLES
+          </div>
+
+          <div
+            className={`summary-value ${
+              movement20 ===
+              null
+                ? "neutral"
+                : movement20 >= 0
+                ? "long"
+                : "short"
+            }`}
+          >
+            {
+              formatPercent(
                 movement20
-              )}
-            </div>
-
+              )
+            }
           </div>
 
+        </div>
 
-          <div className="movement-card">
 
-            <div className="movement-label">
-              60 CANDLES
-            </div>
+        <div className="summary-box">
 
-            <div className="movement-value">
-              {formatPercent(
+          <div className="summary-label">
+            60 CANDLES
+          </div>
+
+          <div
+            className={`summary-value ${
+              movement60 ===
+              null
+                ? "neutral"
+                : movement60 >= 0
+                ? "long"
+                : "short"
+            }`}
+          >
+            {
+              formatPercent(
                 movement60
-              )}
+              )
+            }
+          </div>
+
+        </div>
+
+      </div>
+
+
+      {/* ==================================================
+          DYNAMIC TREND DIRECTION
+          ================================================== */}
+
+      <div className="section-title">
+
+        {trendCandles}
+        {" CANDLE DIRECTION"}
+
+      </div>
+
+
+      <div className="price-v1-trend-card">
+
+        <div className="trend-header">
+
+          <div
+            className={`trend-status ${directionClass(
+              trendDirection
+            )}`}
+          >
+
+            {
+              hasTrendCandles
+                ? normalizeDirection(
+                    trendDirection
+                  )
+                : "WAITING"
+            }
+
+          </div>
+
+        </div>
+
+
+        <div className="trend-grid">
+
+          <div className="trend-box">
+
+            <div className="trend-label">
+              TREND DIRECTION
+            </div>
+
+            <div
+              className={`trend-value ${directionClass(
+                trendDirection
+              )}`}
+            >
+
+              {
+                hasTrendCandles
+                  ? normalizeDirection(
+                      trendDirection
+                    )
+                  : "--"
+              }
+
+            </div>
+
+          </div>
+
+
+          <div className="trend-box">
+
+            <div className="trend-label">
+              STRENGTH
+            </div>
+
+            <div className="trend-value">
+              {
+                formatPercent(
+                  trendStrength
+                )
+              }
+            </div>
+
+          </div>
+
+
+          <div className="trend-box">
+
+            <div className="trend-label">
+              UP MOVEMENT
+            </div>
+
+            <div className="trend-value long">
+              {
+                formatPercent(
+                  trendUpMovement
+                )
+              }
+            </div>
+
+          </div>
+
+
+          <div className="trend-box">
+
+            <div className="trend-label">
+              DOWN MOVEMENT
+            </div>
+
+            <div className="trend-value short">
+              {
+                formatPercent(
+                  trendDownMovement
+                )
+              }
             </div>
 
           </div>
 
         </div>
 
-      </section>
+
+        {!hasTrendCandles && (
+
+          <div className="trend-waiting">
+
+            Waiting for{" "}
+            {trendCandles}
+            {" candles..."}
+
+          </div>
+
+        )}
+
+      </div>
 
 
-      {/* ================================================== */}
-      {/* CHART */}
-      {/* ================================================== */}
+      {/* ==================================================
+          ENTRY CONFIRMATION
+          ================================================== */}
 
-      <section className="price-section">
+      <div className="section-title">
+        ENTRY CONFIRMATION
+      </div>
 
-        <div className="section-title">
-          Price Chart
+
+      <div className="price-v1-entry-grid">
+
+        {
+          entryWindows.map(
+            (windowSize) => (
+
+              <EntryCell
+                key={
+                  windowSize
+                }
+                entries={
+                  entries
+                }
+                windowSize={
+                  windowSize
+                }
+              />
+
+            )
+          )
+        }
+
+      </div>
+
+
+      {/* ==================================================
+          CONFIRMATION SUMMARY
+          ================================================== */}
+
+      <div className="price-v1-summary confirmation-summary">
+
+        <div className="summary-box">
+
+          <div className="summary-label">
+            RAW LONG
+          </div>
+
+          <div className="summary-value long">
+            {rawLongVotes}
+          </div>
+
         </div>
 
-        <PriceChart
-          candles={candles}
-        />
 
-      </section>
+        <div className="summary-box">
 
+          <div className="summary-label">
+            RAW SHORT
+          </div>
 
-      {/* ================================================== */}
-      {/* DECISION HISTORY */}
-      {/* ================================================== */}
-
-      <section className="price-section">
-
-        <div className="section-title">
-
-          Decision History{" "}
-
-          {cycleProgress}
-          {" / "}
-          {cycleLength}
+          <div className="summary-value short">
+            {rawShortVotes}
+          </div>
 
         </div>
 
 
-        <div className="decision-table-wrapper">
+        <div className="summary-box">
 
-          <table className="decision-table">
+          <div className="summary-label">
+            NEUTRAL
+          </div>
 
-            <thead>
+          <div className="summary-value neutral">
+            {neutralVotes}
+          </div>
 
-              <tr>
-
-                <th>TIME</th>
-
-                <th>COIN</th>
-
-                <th>TREND</th>
-
-                <th>15</th>
-
-                <th>20</th>
-
-                <th>30</th>
-
-                <th>60</th>
-
-                <th>DECISION</th>
-
-              </tr>
-
-            </thead>
+        </div>
 
 
-            <tbody>
+        <div className="summary-box confirmation-result">
 
-              {decisionHistory.length === 0 ? (
+          <div className="summary-label">
+            CONFIRMATION
+          </div>
 
-                <tr>
+          <div
+            className={`summary-value ${directionClass(
+              confirmationDecision
+            )}`}
+          >
+            {
+              normalizeDirection(
+                confirmationDecision
+              )
+            }
+          </div>
 
-                  <td
-                    colSpan="8"
-                    className="empty-cell"
-                  >
-                    Waiting for Price V1 decisions...
-                  </td>
-
-                </tr>
-
-              ) : (
-
-                decisionHistory.map(
-                  (
-                    snapshot,
-                    index
-                  ) => {
-
-                    const entries =
-                      snapshot?.entries ||
-                      {};
+        </div>
 
 
-                    const item15 =
-                      getEntry(
-                        entries,
-                        15
-                      );
+        <div className="summary-box confirmation-result">
+
+          <div className="summary-label">
+            REQUIRED
+          </div>
+
+          <div className="summary-value">
+            {
+              entryConfirmationsRequired
+            }
+          </div>
+
+        </div>
 
 
-                    const item20 =
-                      getEntry(
-                        entries,
-                        20
-                      );
+        <div className="summary-box confirmation-result">
+
+          <div className="summary-label">
+            LAST CONFIRMATION
+          </div>
+
+          <div className="summary-value confirmation-time">
+            {
+              formatBerlinTime(
+                lastConfirmationTime
+              )
+            }
+          </div>
+
+        </div>
+
+      </div>
 
 
-                    const item30 =
-                      getEntry(
-                        entries,
-                        30
-                      );
+      {/* ==================================================
+          PRICE CHART
+          ================================================== */}
+
+      <div className="section-title">
+        PRICE CHART
+      </div>
 
 
-                    const item60 =
-                      getEntry(
-                        entries,
-                        60
-                      );
+      <PriceChart
+        key={symbol}
+        candles={candles}
+      />
 
 
-                    const trend =
-                      snapshot?.trend ||
-                      "--";
+      {/* ==================================================
+          CURRENT CYCLE
+          ================================================== */}
+
+      <div className="panel-card">
+
+        <div className="panel-card-header">
+
+          <div>
+
+            <div className="panel-card-title">
+              CURRENT CYCLE
+            </div>
+
+            <div className="panel-card-subtitle">
+              Live snapshot collection
+            </div>
+
+          </div>
+
+          <div className="cycle-progress">
+            {currentCycle.length}
+            {" / "}
+            {cycleLength}
+          </div>
+
+        </div>
 
 
-                    const decision =
-                      snapshot?.finalDecision ??
-                      snapshot?.decision ??
-                      "NEUTRAL";
+        {
+          currentCycle.length ===
+          0 ? (
 
+            <div className="empty-state">
+              Waiting for first snapshot...
+            </div>
 
-                    const candleTime =
-                      snapshot?.candleTime ??
-                      snapshot?.timestamp ??
-                      snapshot?.time;
+          ) : (
 
+            <div className="table-wrap">
 
-                    return (
+              <table className="decision-table">
 
-                      <tr
-                        key={
-                          `${
-                            candleTime ||
-                            index
-                          }-${index}`
-                        }
-                      >
+                <thead>
 
-                        <td>
-                          {formatTime(
-                            candleTime
-                          )}
-                        </td>
+                  <tr>
 
+                    <th>
+                      Time
+                    </th>
 
-                        <td>
-                          {symbol}
-                        </td>
+                    <th>
+                      Coin
+                    </th>
 
+                    <th>
+                      Trend
+                    </th>
 
-                        <td>
+                    {
+                      entryWindows.map(
+                        (windowSize) => (
 
-                          <span
-                            className={`decision-direction ${directionClass(
-                              trend
-                            )}`}
+                          <th
+                            key={
+                              windowSize
+                            }
                           >
-
-                            {normalizeDirection(
-                              trend
-                            )}
-
-                            {typeof trend ===
-                              "object" &&
-                              trend?.strength !==
-                                undefined && (
-                                <>
-                                  {" "}
-                                  {formatPercent(
-                                    trend.strength
-                                  )}
-                                </>
-                              )}
-
-                          </span>
-
-                        </td>
-
-
-                        <td>
-                          <EntryCell
-                            entry={item15}
-                          />
-                        </td>
-
-
-                        <td>
-                          <EntryCell
-                            entry={item20}
-                          />
-                        </td>
-
-
-                        <td>
-                          <EntryCell
-                            entry={item30}
-                          />
-                        </td>
-
-
-                        <td>
-                          <EntryCell
-                            entry={item60}
-                          />
-                        </td>
-
-
-                        <td>
-
-                          <span
-                            className={`decision-direction ${directionClass(
-                              decision
-                            )}`}
-                          >
-
-                            {normalizeDirection(
-                              decision
-                            )}
-
-                          </span>
-
-                        </td>
-
-                      </tr>
-
-                    );
-                  }
-                )
-
-              )}
-
-            </tbody>
-
-          </table>
-
-        </div>
-
-      </section>
-
-
-      {/* ================================================== */}
-      {/* COMPLETED CYCLES */}
-      {/* ================================================== */}
-
-      <section className="price-section">
-
-        <div className="section-title">
-          Previous Completed Cycles
-        </div>
-
-
-        <div className="decision-table-wrapper">
-
-          <table className="decision-table">
-
-            <thead>
-
-              <tr>
-
-                <th>CYCLE</th>
-
-                <th>START</th>
-
-                <th>END</th>
-
-                <th>TREND</th>
-
-                <th>DECISION</th>
-
-              </tr>
-
-            </thead>
-
-
-            <tbody>
-
-              {cycleHistory.length === 0 ? (
-
-                <tr>
-
-                  <td
-                    colSpan="5"
-                    className="empty-cell"
-                  >
-                    No completed cycles yet.
-                  </td>
-
-                </tr>
-
-              ) : (
-
-                [...cycleHistory]
-                  .map(
-                    (
-                      cycle,
-                      index
-                    ) => {
-
-                      const cycleDecision =
-                        cycle?.finalDecision ??
-                        cycle?.decision ??
-                        "--";
-
-
-                      const cycleTrend =
-                        cycle?.trend ??
-                        cycle?.finalTrend ??
-                        "--";
-
-
-                      return (
-
-                        <tr
-                          key={
-                            cycle?.cycleId ??
-                            index
-                          }
-                        >
-
-                          <td>
-                            {cycle?.cycleId ??
-                              cycleHistory.length -
-                                index}
-                          </td>
-
-
-                          <td>
-                            {formatTime(
-                              cycle?.startTime
-                            )}
-                          </td>
-
-
-                          <td>
-                            {formatTime(
-                              cycle?.endTime
-                            )}
-                          </td>
-
-
-                          <td>
-
-                            <span
-                              className={`decision-direction ${directionClass(
-                                cycleTrend
-                              )}`}
-                            >
-
-                              {normalizeDirection(
-                                cycleTrend
-                              )}
-
-                            </span>
-
-                          </td>
-
-
-                          <td>
-
-                            <span
-                              className={`decision-direction ${directionClass(
-                                cycleDecision
-                              )}`}
-                            >
-
-                              {normalizeDirection(
-                                cycleDecision
-                              )}
-
-                            </span>
-
-                          </td>
-
-                        </tr>
-
-                      );
-
+                            {windowSize}
+                          </th>
+
+                        )
+                      )
                     }
-                  )
 
-              )}
+                    <th>
+                      Decision
+                    </th>
 
-            </tbody>
+                  </tr>
 
-          </table>
+                </thead>
+
+
+                <tbody>
+
+                  {
+                    [
+                      ...currentCycle
+                    ]
+                      .reverse()
+                      .map(
+                        (
+                          snapshot,
+                          index
+                        ) => {
+
+                          const snapshotTrend =
+                            snapshot?.trend ||
+                            {};
+
+
+                          const formatSnapshotEntry =
+                            (
+                              entry
+                            ) => {
+
+                              const direction =
+                                entry?.direction ||
+                                "NEUTRAL";
+
+                              const strength =
+                                entry?.strength;
+
+
+                              if (
+                                strength ===
+                                  null ||
+                                strength ===
+                                  undefined
+                              ) {
+
+                                return direction;
+                              }
+
+
+                              return `${direction} ${Number(
+                                strength
+                              ).toFixed(2)}%`;
+
+                            };
+
+
+                          const trendText =
+                            snapshotTrend?.strength !==
+                              null &&
+                            snapshotTrend?.strength !==
+                              undefined
+
+                              ? `${snapshotTrend?.direction || "NEUTRAL"} ${Number(
+                                  snapshotTrend.strength
+                                ).toFixed(2)}%`
+
+                              : (
+                                  snapshotTrend?.direction ||
+                                  "NEUTRAL"
+                                );
+
+
+                          return (
+
+                            <tr
+                              key={
+                                `${
+                                  snapshot?.candleTime ||
+                                  snapshot?.timestamp ||
+                                  index
+                                }-${index}`
+                              }
+                            >
+
+                              <td>
+                                {
+                                  formatBerlinTime(
+                                    snapshot?.timestamp
+                                  )
+                                }
+                              </td>
+
+
+                              <td className="coin-cell">
+                                {
+                                  snapshot?.symbol ||
+                                  selectedSymbol ||
+                                  "--"
+                                }
+                              </td>
+
+
+                              <td>
+
+                                <span
+                                  className={`decision-value ${directionClass(
+                                    snapshotTrend?.direction
+                                  )}`}
+                                >
+                                  {
+                                    trendText
+                                  }
+                                </span>
+
+                              </td>
+
+
+                              {
+                                entryWindows.map(
+                                  (
+                                    windowSize
+                                  ) => {
+
+                                    const entry =
+                                      getEntry(
+                                        snapshot?.entries,
+                                        windowSize
+                                      ) ||
+                                      {};
+
+                                    return (
+
+                                      <td
+                                        key={
+                                          windowSize
+                                        }
+                                      >
+
+                                        <span
+                                          className={`decision-value ${directionClass(
+                                            entry?.direction
+                                          )}`}
+                                        >
+                                          {
+                                            formatSnapshotEntry(
+                                              entry
+                                            )
+                                          }
+                                        </span>
+
+                                      </td>
+
+                                    );
+
+                                  }
+                                )
+                              }
+
+
+                              <td>
+
+                                <span
+                                  className={`decision-value ${directionClass(
+                                    snapshot?.decision
+                                  )}`}
+                                >
+                                  {
+                                    snapshot?.decision ||
+                                    "NEUTRAL"
+                                  }
+                                </span>
+
+                              </td>
+
+                            </tr>
+
+                          );
+
+                        }
+                      )
+                  }
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          )
+        }
+
+      </div>
+
+
+      {/* ==================================================
+          PREVIOUS CYCLES
+          ================================================== */}
+
+      <div className="panel-card">
+
+        <div className="panel-card-header">
+
+          <div>
+
+            <div className="panel-card-title">
+              PREVIOUS CYCLES
+            </div>
+
+            <div className="panel-card-subtitle">
+              Completed Cycle History
+            </div>
+
+          </div>
+
+          <div className="cycle-progress">
+
+            {previousCycles.length}
+            {" "}
+            {
+              previousCycles.length ===
+              1
+                ? "cycle"
+                : "cycles"
+            }
+
+          </div>
 
         </div>
 
-      </section>
+
+        {
+          previousCycles.length ===
+          0 ? (
+
+            <div className="empty-state">
+              No completed cycles yet.
+            </div>
+
+          ) : (
+
+            <div className="table-wrap">
+
+              <table className="decision-table">
+
+                <thead>
+
+                  <tr>
+
+                    <th>
+                      Time
+                    </th>
+
+                    <th>
+                      Coin
+                    </th>
+
+                    <th>
+                      Trend
+                    </th>
+
+                    {
+                      entryWindows.map(
+                        (windowSize) => (
+
+                          <th
+                            key={
+                              windowSize
+                            }
+                          >
+                            {windowSize}
+                          </th>
+
+                        )
+                      )
+                    }
+
+                    <th>
+                      Decision
+                    </th>
+
+                    <th>
+                      Reason
+                    </th>
+
+                  </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                  {
+                    previousCycles.map(
+                      (
+                        cycle,
+                        index
+                      ) => (
+
+                        <PreviousCycleRow
+                          key={
+                            cycle?.cycleId ||
+                            `${getCycleTime(
+                              cycle
+                            )}-${index}`
+                          }
+
+                          cycle={
+                            cycle
+                          }
+
+                          selectedSymbol={
+                            selectedSymbol
+                          }
+
+                          entryWindows={
+                            entryWindows
+                          }
+
+                        />
+
+                      )
+                    )
+                  }
+
+                </tbody>
+
+              </table>
+
+            </div>
+
+          )
+        }
+
+      </div>
+
+
+      {/* ==================================================
+          LAST COMPLETED CYCLE
+          ================================================== */}
+
+      {
+        lastCycle && (
+
+          <div className="last-cycle-card">
+
+            <div className="section-title">
+              LAST COMPLETED CYCLE
+            </div>
+
+
+            <div className="last-cycle-grid">
+
+              <div>
+
+                <div className="trend-label">
+                  CYCLE
+                </div>
+
+                <div className="trend-value">
+
+                  #
+
+                  {
+                    lastCycle.cycleId ??
+                    "--"
+                  }
+
+                </div>
+
+              </div>
+
+
+              <div>
+
+                <div className="trend-label">
+                  DECISION
+                </div>
+
+                <div
+                  className={`trend-value ${directionClass(
+                    getCycleDecision(
+                      lastCycle
+                    )
+                  )}`}
+                >
+                  {
+                    normalizeDirection(
+                      getCycleDecision(
+                        lastCycle
+                      )
+                    )
+                  }
+                </div>
+
+              </div>
+
+
+              <div>
+
+                <div className="trend-label">
+                  LONG
+                </div>
+
+                <div className="trend-value long">
+                  {
+                    lastCycle.votes
+                      ?.long ??
+                    0
+                  }
+                </div>
+
+              </div>
+
+
+              <div>
+
+                <div className="trend-label">
+                  SHORT
+                </div>
+
+                <div className="trend-value short">
+                  {
+                    lastCycle.votes
+                      ?.short ??
+                    0
+                  }
+                </div>
+
+              </div>
+
+
+              <div>
+
+                <div className="trend-label">
+                  NEUTRAL
+                </div>
+
+                <div className="trend-value neutral">
+                  {
+                    lastCycle.votes
+                      ?.neutral ??
+                    0
+                  }
+                </div>
+
+              </div>
+
+            </div>
+
+
+            <div className="last-cycle-reason">
+
+              {
+                lastCycle.reason ||
+                lastCycle.finalReason ||
+                "--"
+              }
+
+            </div>
+
+          </div>
+
+        )
+      }
+
 
     </div>
   );
 }
+

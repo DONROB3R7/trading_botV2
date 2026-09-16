@@ -1,7 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
+
 import PriceV1Panel from "./components/PriceV1Panel";
+import TradingPositionsPanel from "./components/TradingPositionsPanel";
 
 const API_BASE = "http://localhost:3001";
+
+
+// ============================================================
+// PRICE V1 DEFAULT SETTINGS
+//
+// Used only as initial UI fallback while the backend loads.
+// The backend remains the real source of truth.
+// ============================================================
+
+const PRICE_V1_DEFAULTS = {
+    TREND_CANDLES: 200,
+
+    ENTRY_WINDOWS: [
+        15,
+        20,
+        30,
+        60,
+    ],
+
+    TREND_REQUIRED: 53,
+
+    ENTRY_REQUIRED: 50,
+
+    ENTRY_CONFIRMATIONS_REQUIRED: 3,
+
+    CYCLE_LENGTH: 10,
+
+    HISTORY_LIMIT: 500,
+
+    KLINE_LIMIT: 1000,
+
+    REFRESH_BUFFER_MS: 1200,
+};
 
 
 // ============================================================
@@ -59,6 +94,34 @@ export default function App() {
 
 
     // ========================================================
+    // PRICE V1 SESSION SETTINGS
+    // ========================================================
+
+    const [
+        priceV1Settings,
+        setPriceV1Settings,
+    ] = useState({
+        ...PRICE_V1_DEFAULTS,
+
+        ENTRY_WINDOWS: [
+            ...PRICE_V1_DEFAULTS.ENTRY_WINDOWS,
+        ],
+    });
+
+
+    const [
+        priceV1SettingsLoading,
+        setPriceV1SettingsLoading,
+    ] = useState(true);
+
+
+    const [
+        priceV1SettingsSaving,
+        setPriceV1SettingsSaving,
+    ] = useState(false);
+
+
+    // ========================================================
     // SAVE SELECTED PRICE V1 SYMBOL
     // ========================================================
 
@@ -73,7 +136,9 @@ export default function App() {
 
         }
 
-    }, [selectedPriceSymbol]);
+    }, [
+        selectedPriceSymbol
+    ]);
 
 
     // ========================================================
@@ -117,12 +182,6 @@ export default function App() {
     // ========================================================
     // LOAD WEEX SYMBOLS
     // ========================================================
-    //
-    // These are ONLY used for the ADD selector.
-    //
-    // They are NOT displayed as Coin Manager assignments.
-    //
-    // ========================================================
 
     async function loadWeexSymbols() {
 
@@ -145,9 +204,12 @@ export default function App() {
                 await response.json();
 
             const symbols =
-                Array.isArray(data?.symbols)
+                Array.isArray(
+                    data?.symbols
+                )
                     ? data.symbols
                     : [];
+
 
             const cleanSymbols =
                 symbols
@@ -159,6 +221,7 @@ export default function App() {
                     )
                     .filter(Boolean)
                     .sort();
+
 
             setWeexSymbols(
                 cleanSymbols
@@ -200,10 +263,21 @@ export default function App() {
             const data =
                 await response.json();
 
+            const status =
+                data?.status || {};
+
+
+            // ------------------------------------------------
+            // BOT LIST
+            // ------------------------------------------------
+
             const botList =
-                Array.isArray(data?.bots)
-                    ? data.bots
+                Array.isArray(
+                    status?.bots
+                )
+                    ? status.bots
                     : [];
+
 
             setBots(
                 botList
@@ -211,51 +285,56 @@ export default function App() {
 
 
             // ------------------------------------------------
-            // Rebuild running instances from backend
+            // RUNNING INSTANCES
             // ------------------------------------------------
 
-            const instanceMap = {};
+            const rawInstances =
+                status?.instances || {};
+
+
+            const instanceMap =
+                {};
+
 
             for (
-                const bot of botList
+                const [
+                    symbol,
+                    instance
+                ]
+                    of Object.entries(
+                        rawInstances
+                    )
             ) {
 
-                const instances =
-                    Array.isArray(
-                        bot?.instances
+                const cleanSymbol =
+                    String(
+                        symbol || ""
                     )
-                        ? bot.instances
-                        : [];
+                        .trim()
+                        .toUpperCase();
 
-                for (
-                    const instance of instances
-                ) {
 
-                    const symbol =
-                        String(
-                            instance?.symbol ||
-                            instance?.statusData?.symbol ||
-                            ""
-                        )
-                            .trim()
-                            .toUpperCase();
-
-                    if (!symbol) {
-                        continue;
-                    }
-
-                    instanceMap[symbol] = {
-
-                        ...instance,
-
-                        botName:
-                            bot.name,
-
-                    };
-
+                if (!cleanSymbol) {
+                    continue;
                 }
 
+
+                instanceMap[
+                    cleanSymbol
+                ] = {
+
+                    ...instance,
+
+                    symbol:
+                        cleanSymbol,
+
+                    botName:
+                        instance?.bot ||
+                        "",
+                };
+
             }
+
 
             setBotInstances(
                 instanceMap
@@ -263,50 +342,108 @@ export default function App() {
 
 
             // ------------------------------------------------
-            // Load assignments from backend
+            // SYMBOL ASSIGNMENTS
             // ------------------------------------------------
 
-            try {
+            const backendAssignments =
+                status?.symbolAssignments;
 
-                const assignmentResponse =
-                    await fetch(
-                        `${API_BASE}/api/market/assignments`
-                    );
 
-                if (
-                    assignmentResponse.ok
-                ) {
-
-                    const assignmentData =
-                        await assignmentResponse.json();
-
-                    const backendAssignments =
-                        assignmentData?.assignments;
-
-                    setAssignments(
-                        backendAssignments &&
-                        typeof backendAssignments ===
-                            "object"
-                            ? backendAssignments
-                            : {}
-                    );
-
-                }
-
-            } catch (assignmentError) {
-
-                console.error(
-                    "Assignment load error:",
-                    assignmentError
-                );
-
-            }
+            setAssignments(
+                backendAssignments &&
+                typeof backendAssignments ===
+                    "object"
+                    ? backendAssignments
+                    : {}
+            );
 
         } catch (error) {
 
             console.error(
                 "Bot status error:",
                 error
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // LOAD PRICE V1 SESSION SETTINGS
+    // ========================================================
+
+    async function loadPriceV1Settings() {
+
+        try {
+
+            setPriceV1SettingsLoading(
+                true
+            );
+
+
+            const response =
+                await fetch(
+                    `${API_BASE}/api/bots/pricev1/settings`,
+                    {
+                        cache:
+                            "no-store",
+                    }
+                );
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    `HTTP ${response.status}`
+                );
+
+            }
+
+
+            const data =
+                await response.json();
+
+
+            if (
+                data?.success &&
+                data?.settings
+            ) {
+
+                setPriceV1Settings({
+
+                    ...PRICE_V1_DEFAULTS,
+
+                    ...data.settings,
+
+                    ENTRY_WINDOWS:
+                        Array.isArray(
+                            data.settings
+                                .ENTRY_WINDOWS
+                        )
+                            ? [
+                                ...data.settings
+                                    .ENTRY_WINDOWS,
+                            ]
+                            : [
+                                ...PRICE_V1_DEFAULTS
+                                    .ENTRY_WINDOWS,
+                            ],
+                });
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Price V1 settings load error:",
+                error
+            );
+
+        } finally {
+
+            setPriceV1SettingsLoading(
+                false
             );
 
         }
@@ -322,21 +459,26 @@ export default function App() {
 
         let cancelled = false;
 
+
         async function initialLoad() {
 
             if (cancelled) {
                 return;
             }
 
+
             await Promise.all([
                 loadSystemStatus(),
                 loadBots(),
                 loadWeexSymbols(),
+                loadPriceV1Settings(),
             ]);
 
         }
 
+
         initialLoad();
+
 
         return () => {
 
@@ -354,12 +496,17 @@ export default function App() {
     useEffect(() => {
 
         const timer =
-            setInterval(() => {
+            setInterval(
+                () => {
 
-                loadSystemStatus();
-                loadBots();
+                    loadSystemStatus();
 
-            }, 2000);
+                    loadBots();
+
+                },
+                2000
+            );
+
 
         return () => {
 
@@ -397,7 +544,9 @@ export default function App() {
                     })
                 );
 
-        }, [botInstances]);
+        }, [
+            botInstances
+        ]);
 
 
     // ========================================================
@@ -415,11 +564,14 @@ export default function App() {
                     "pricev1"
             ) {
 
-                return botInstances[
-                    selectedPriceSymbol
-                ];
+                return (
+                    botInstances[
+                        selectedPriceSymbol
+                    ]
+                );
 
             }
+
 
             return (
                 priceV1Instances[0] ||
@@ -440,12 +592,14 @@ export default function App() {
     useEffect(() => {
 
         if (
-            priceV1Instances.length === 0
+            priceV1Instances.length ===
+            0
         ) {
 
             return;
 
         }
+
 
         const exists =
             priceV1Instances.some(
@@ -453,6 +607,7 @@ export default function App() {
                     instance.symbol ===
                     selectedPriceSymbol
             );
+
 
         if (!exists) {
 
@@ -484,17 +639,13 @@ export default function App() {
                 null
             );
 
-        }, [bots]);
+        }, [
+            bots
+        ]);
 
 
     // ========================================================
     // AVAILABLE SYMBOLS FOR ADD
-    // ========================================================
-    //
-    // We remove already assigned symbols from the selector.
-    //
-    // This prevents accidentally assigning the same coin twice.
-    //
     // ========================================================
 
     const availableSymbols =
@@ -502,16 +653,341 @@ export default function App() {
 
             return weexSymbols.filter(
                 symbol =>
-                    !Object.prototype.hasOwnProperty.call(
-                        assignments,
-                        symbol
-                    )
+                    !Object.prototype
+                        .hasOwnProperty.call(
+                            assignments,
+                            symbol
+                        )
             );
 
         }, [
             weexSymbols,
             assignments,
         ]);
+
+
+    // ========================================================
+    // PRICE V1 SETTING INPUT HELPERS
+    // ========================================================
+
+    function updatePriceV1Setting(
+        key,
+        value
+    ) {
+
+        setPriceV1Settings(
+            previous => ({
+
+                ...previous,
+
+                [key]:
+                    value,
+
+            })
+        );
+
+    }
+
+
+    function updateEntryWindow(
+        index,
+        value
+    ) {
+
+        setPriceV1Settings(
+            previous => {
+
+                const windows =
+                    Array.isArray(
+                        previous.ENTRY_WINDOWS
+                    )
+                        ? [
+                            ...previous
+                                .ENTRY_WINDOWS,
+                        ]
+                        : [];
+
+
+                windows[index] =
+                    value;
+
+
+                return {
+
+                    ...previous,
+
+                    ENTRY_WINDOWS:
+                        windows,
+                };
+
+            }
+        );
+
+    }
+
+
+    // ========================================================
+    // APPLY PRICE V1 SETTINGS
+    // ========================================================
+
+    async function applyPriceV1Settings() {
+
+        try {
+
+            setPriceV1SettingsSaving(
+                true
+            );
+
+
+            const cleanWindows =
+                priceV1Settings
+                    .ENTRY_WINDOWS
+                    .map(
+                        Number
+                    )
+                    .filter(
+                        Number.isFinite
+                    );
+
+
+            const payload = {
+
+                TREND_CANDLES:
+                    Number(
+                        priceV1Settings
+                            .TREND_CANDLES
+                    ),
+
+                ENTRY_WINDOWS:
+                    cleanWindows,
+
+                TREND_REQUIRED:
+                    Number(
+                        priceV1Settings
+                            .TREND_REQUIRED
+                    ),
+
+                ENTRY_REQUIRED:
+                    Number(
+                        priceV1Settings
+                            .ENTRY_REQUIRED
+                    ),
+
+                ENTRY_CONFIRMATIONS_REQUIRED:
+                    Number(
+                        priceV1Settings
+                            .ENTRY_CONFIRMATIONS_REQUIRED
+                    ),
+
+                CYCLE_LENGTH:
+                    Number(
+                        priceV1Settings
+                            .CYCLE_LENGTH
+                    ),
+
+                HISTORY_LIMIT:
+                    Number(
+                        priceV1Settings
+                            .HISTORY_LIMIT
+                    ),
+
+                KLINE_LIMIT:
+                    Number(
+                        priceV1Settings
+                            .KLINE_LIMIT
+                    ),
+
+                REFRESH_BUFFER_MS:
+                    Number(
+                        priceV1Settings
+                            .REFRESH_BUFFER_MS
+                    ),
+
+            };
+
+
+            const response =
+                await fetch(
+                    `${API_BASE}/api/bots/pricev1/settings`,
+                    {
+
+                        method:
+                            "POST",
+
+                        headers: {
+                            "Content-Type":
+                                "application/json",
+                        },
+
+                        body:
+                            JSON.stringify(
+                                payload
+                            ),
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data?.error ||
+                    `HTTP ${response.status}`
+                );
+
+            }
+
+
+            if (
+                data?.settings
+            ) {
+
+                setPriceV1Settings({
+
+                    ...PRICE_V1_DEFAULTS,
+
+                    ...data.settings,
+
+                    ENTRY_WINDOWS:
+                        Array.isArray(
+                            data.settings
+                                .ENTRY_WINDOWS
+                        )
+                            ? [
+                                ...data.settings
+                                    .ENTRY_WINDOWS,
+                            ]
+                            : [
+                                ...PRICE_V1_DEFAULTS
+                                    .ENTRY_WINDOWS,
+                            ],
+                });
+
+            }
+
+
+            setMessage(
+                "Price V1 session settings applied."
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Apply Price V1 settings error:",
+                error
+            );
+
+
+            setMessage(
+                error.message
+            );
+
+        } finally {
+
+            setPriceV1SettingsSaving(
+                false
+            );
+
+        }
+
+    }
+
+
+    // ========================================================
+    // RESET PRICE V1 SETTINGS
+    // ========================================================
+
+    async function resetPriceV1Settings() {
+
+        try {
+
+            setPriceV1SettingsSaving(
+                true
+            );
+
+
+            const response =
+                await fetch(
+                    `${API_BASE}/api/bots/pricev1/settings/reset`,
+                    {
+
+                        method:
+                            "POST",
+
+                    }
+                );
+
+
+            const data =
+                await response.json();
+
+
+            if (!response.ok) {
+
+                throw new Error(
+                    data?.error ||
+                    `HTTP ${response.status}`
+                );
+
+            }
+
+
+            if (
+                data?.settings
+            ) {
+
+                setPriceV1Settings({
+
+                    ...PRICE_V1_DEFAULTS,
+
+                    ...data.settings,
+
+                    ENTRY_WINDOWS:
+                        Array.isArray(
+                            data.settings
+                                .ENTRY_WINDOWS
+                        )
+                            ? [
+                                ...data.settings
+                                    .ENTRY_WINDOWS,
+                            ]
+                            : [
+                                ...PRICE_V1_DEFAULTS
+                                    .ENTRY_WINDOWS,
+                            ],
+                });
+
+            }
+
+
+            setMessage(
+                "Price V1 settings reset to defaults."
+            );
+
+        } catch (error) {
+
+            console.error(
+                "Reset Price V1 settings error:",
+                error
+            );
+
+
+            setMessage(
+                error.message
+            );
+
+        } finally {
+
+            setPriceV1SettingsSaving(
+                false
+            );
+
+        }
+
+    }
 
 
     // ========================================================
@@ -527,6 +1003,7 @@ export default function App() {
                 .trim()
                 .toUpperCase();
 
+
         if (!symbol) {
 
             setMessage(
@@ -534,13 +1011,8 @@ export default function App() {
             );
 
             return;
-
         }
 
-
-        // ----------------------------------------------------
-        // Extra frontend safety check
-        // ----------------------------------------------------
 
         if (
             !weexSymbols.includes(
@@ -553,40 +1025,46 @@ export default function App() {
             );
 
             return;
-
         }
 
 
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
+
 
             const response =
                 await fetch(
-                    `${API_BASE}/api/market/assign`,
+                    `${API_BASE}/api/bots/assign`,
                     {
 
-                        method: "POST",
+                        method:
+                            "POST",
 
                         headers: {
                             "Content-Type":
                                 "application/json",
                         },
 
-                        body: JSON.stringify({
+                        body:
+                            JSON.stringify({
 
-                            symbol,
+                                symbol,
 
-                            bot:
-                                newBot,
+                                botName:
+                                    newBot,
 
-                        }),
+                            }),
 
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -602,12 +1080,9 @@ export default function App() {
                 `${symbol} assigned to ${newBot}`
             );
 
+
             setNewSymbol("");
 
-
-            // ------------------------------------------------
-            // Reload backend state
-            // ------------------------------------------------
 
             await loadBots();
 
@@ -618,13 +1093,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -635,24 +1113,32 @@ export default function App() {
     // REMOVE COIN
     // ========================================================
 
-    async function removeCoin(symbol) {
+    async function removeCoin(
+        symbol
+    ) {
 
         const cleanSymbol =
-            String(symbol || "")
+            String(
+                symbol || ""
+            )
                 .trim()
                 .toUpperCase();
+
 
         if (!cleanSymbol) {
             return;
         }
 
+
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
 
 
             // ------------------------------------------------
-            // If currently running, stop it first.
+            // STOP RUNNING INSTANCE FIRST
             // ------------------------------------------------
 
             const instance =
@@ -660,63 +1146,87 @@ export default function App() {
                     cleanSymbol
                 ];
 
-            if (instance) {
 
-                await fetch(
-                    `${API_BASE}/api/market/stop`,
-                    {
+            if (
+                instance &&
+                instance.status ===
+                    "running"
+            ) {
 
-                        method: "POST",
+                const stopResponse =
+                    await fetch(
+                        `${API_BASE}/api/bots/stop-symbol`,
+                        {
 
-                        headers: {
-                            "Content-Type":
-                                "application/json",
-                        },
+                            method:
+                                "POST",
 
-                        body: JSON.stringify({
+                            headers: {
+                                "Content-Type":
+                                    "application/json",
+                            },
 
-                            symbol:
-                                cleanSymbol,
+                            body:
+                                JSON.stringify({
+                                    symbol:
+                                        cleanSymbol,
+                                }),
 
-                        }),
+                        }
+                    );
 
-                    }
-                );
+
+                const stopData =
+                    await stopResponse.json();
+
+
+                if (!stopResponse.ok) {
+
+                    throw new Error(
+                        stopData?.error ||
+                        `HTTP ${stopResponse.status}`
+                    );
+
+                }
 
             }
 
 
             // ------------------------------------------------
-            // Remove assignment
+            // REMOVE ASSIGNMENT
             // ------------------------------------------------
 
             const response =
                 await fetch(
-                    `${API_BASE}/api/market/assign`,
+                    `${API_BASE}/api/bots/assign`,
                     {
 
-                        method: "POST",
+                        method:
+                            "POST",
 
                         headers: {
                             "Content-Type":
                                 "application/json",
                         },
 
-                        body: JSON.stringify({
+                        body:
+                            JSON.stringify({
 
-                            symbol:
-                                cleanSymbol,
+                                symbol:
+                                    cleanSymbol,
 
-                            bot:
-                                "none",
+                                botName:
+                                    null,
 
-                        }),
+                            }),
 
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -728,6 +1238,10 @@ export default function App() {
             }
 
 
+            // ------------------------------------------------
+            // CLEAR SELECTED PRICE V1 SYMBOL
+            // ------------------------------------------------
+
             if (
                 selectedPriceSymbol ===
                 cleanSymbol
@@ -736,6 +1250,7 @@ export default function App() {
                 localStorage.removeItem(
                     "priceV1SelectedSymbol"
                 );
+
 
                 setSelectedPriceSymbol(
                     ""
@@ -748,6 +1263,7 @@ export default function App() {
                 `${cleanSymbol} removed`
             );
 
+
             await loadBots();
 
         } catch (error) {
@@ -757,13 +1273,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -780,45 +1299,56 @@ export default function App() {
     ) {
 
         const cleanSymbol =
-            String(symbol || "")
+            String(
+                symbol || ""
+            )
                 .trim()
                 .toUpperCase();
+
 
         if (!cleanSymbol) {
             return;
         }
 
+
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
+
 
             const response =
                 await fetch(
-                    `${API_BASE}/api/market/start`,
+                    `${API_BASE}/api/bots/start-symbol`,
                     {
 
-                        method: "POST",
+                        method:
+                            "POST",
 
                         headers: {
                             "Content-Type":
                                 "application/json",
                         },
 
-                        body: JSON.stringify({
+                        body:
+                            JSON.stringify({
 
-                            symbol:
-                                cleanSymbol,
+                                symbol:
+                                    cleanSymbol,
 
-                            bot:
-                                botName,
+                                botName:
+                                    botName,
 
-                        }),
+                            }),
 
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -830,6 +1360,10 @@ export default function App() {
             }
 
 
+            // ------------------------------------------------
+            // PRICE V1 OPEN
+            // ------------------------------------------------
+
             if (
                 botName ===
                 "pricev1"
@@ -838,6 +1372,7 @@ export default function App() {
                 setSelectedPriceSymbol(
                     cleanSymbol
                 );
+
 
                 setActiveTab(
                     "pricev1"
@@ -850,6 +1385,7 @@ export default function App() {
                 `${botName} started for ${cleanSymbol}`
             );
 
+
             await loadBots();
 
         } catch (error) {
@@ -859,13 +1395,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -881,42 +1420,53 @@ export default function App() {
     ) {
 
         const cleanSymbol =
-            String(symbol || "")
+            String(
+                symbol || ""
+            )
                 .trim()
                 .toUpperCase();
+
 
         if (!cleanSymbol) {
             return;
         }
 
+
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
+
 
             const response =
                 await fetch(
-                    `${API_BASE}/api/market/stop`,
+                    `${API_BASE}/api/bots/stop-symbol`,
                     {
 
-                        method: "POST",
+                        method:
+                            "POST",
 
                         headers: {
                             "Content-Type":
                                 "application/json",
                         },
 
-                        body: JSON.stringify({
+                        body:
+                            JSON.stringify({
 
-                            symbol:
-                                cleanSymbol,
+                                symbol:
+                                    cleanSymbol,
 
-                        }),
+                            }),
 
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -927,9 +1477,11 @@ export default function App() {
 
             }
 
+
             setMessage(
                 `Bot stopped for ${cleanSymbol}`
             );
+
 
             await loadBots();
 
@@ -940,13 +1492,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -963,18 +1518,26 @@ export default function App() {
 
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
+
 
             const response =
                 await fetch(
                     `${API_BASE}/api/bots/${name}/start`,
                     {
-                        method: "POST",
+
+                        method:
+                            "POST",
+
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -985,9 +1548,11 @@ export default function App() {
 
             }
 
+
             setMessage(
                 `${name} started`
             );
+
 
             await loadBots();
 
@@ -998,13 +1563,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -1021,18 +1589,26 @@ export default function App() {
 
         try {
 
-            setLoading(true);
+            setLoading(
+                true
+            );
+
 
             const response =
                 await fetch(
                     `${API_BASE}/api/bots/${name}/stop`,
                     {
-                        method: "POST",
+
+                        method:
+                            "POST",
+
                     }
                 );
 
+
             const data =
                 await response.json();
+
 
             if (!response.ok) {
 
@@ -1043,9 +1619,11 @@ export default function App() {
 
             }
 
+
             setMessage(
                 `${name} stopped`
             );
+
 
             await loadBots();
 
@@ -1056,13 +1634,16 @@ export default function App() {
                 error
             );
 
+
             setMessage(
                 error.message
             );
 
         } finally {
 
-            setLoading(false);
+            setLoading(
+                false
+            );
 
         }
 
@@ -1076,6 +1657,7 @@ export default function App() {
     return (
 
         <div className="app">
+
 
             {/* =================================================
                 HEADER
@@ -1094,6 +1676,7 @@ export default function App() {
                     </p>
 
                 </div>
+
 
                 <div className="header-status">
 
@@ -1137,6 +1720,7 @@ export default function App() {
                     Dashboard
                 </button>
 
+
                 <button
                     className={
                         activeTab ===
@@ -1154,6 +1738,25 @@ export default function App() {
                     Price V1
                 </button>
 
+
+                <button
+                    className={
+                        activeTab ===
+                        "trading"
+                            ? "active"
+                            : ""
+                    }
+
+                    onClick={() =>
+                        setActiveTab(
+                            "trading"
+                        )
+                    }
+                >
+                    Trading
+                </button>
+
+
                 <button
                     className={
                         activeTab ===
@@ -1170,6 +1773,7 @@ export default function App() {
                 >
                     Order Book V3
                 </button>
+
 
                 <button
                     className={
@@ -1198,15 +1802,15 @@ export default function App() {
             {
                 message && (
 
-                    <div
-                        className="app-message"
-                    >
+                    <div className="app-message">
 
                         {message}
 
                         <button
                             onClick={() =>
-                                setMessage("")
+                                setMessage(
+                                    ""
+                                )
                             }
                         >
                             ×
@@ -1224,21 +1828,18 @@ export default function App() {
 
             {
                 activeTab ===
-                "dashboard" && (
+                    "dashboard" && (
 
                     <main className="dashboard">
+
 
                         {/* =====================================
                             SYSTEM
                         ===================================== */}
 
-                        <section
-                            className="panel"
-                        >
+                        <section className="panel">
 
-                            <div
-                                className="panel-header"
-                            >
+                            <div className="panel-header">
 
                                 <div>
 
@@ -1252,6 +1853,7 @@ export default function App() {
 
                                 </div>
 
+
                                 <div
                                     className={
                                         systemStatus
@@ -1259,24 +1861,19 @@ export default function App() {
                                             : "status-badge stopped"
                                     }
                                 >
-
                                     {
                                         systemStatus
                                             ? "ONLINE"
                                             : "OFFLINE"
                                     }
-
                                 </div>
 
                             </div>
 
-                            <div
-                                className="stats-grid"
-                            >
 
-                                <div
-                                    className="stat-card"
-                                >
+                            <div className="stats-grid">
+
+                                <div className="stat-card">
 
                                     <span>
                                         BACKEND
@@ -1292,9 +1889,8 @@ export default function App() {
 
                                 </div>
 
-                                <div
-                                    className="stat-card"
-                                >
+
+                                <div className="stat-card">
 
                                     <span>
                                         BOTS
@@ -1308,9 +1904,8 @@ export default function App() {
 
                                 </div>
 
-                                <div
-                                    className="stat-card"
-                                >
+
+                                <div className="stat-card">
 
                                     <span>
                                         RUNNING INSTANCES
@@ -1326,9 +1921,8 @@ export default function App() {
 
                                 </div>
 
-                                <div
-                                    className="stat-card"
-                                >
+
+                                <div className="stat-card">
 
                                     <span>
                                         PRICE V1
@@ -1351,13 +1945,9 @@ export default function App() {
                             COIN MANAGER
                         ===================================== */}
 
-                        <section
-                            className="panel"
-                        >
+                        <section className="panel">
 
-                            <div
-                                className="panel-header"
-                            >
+                            <div className="panel-header">
 
                                 <div>
 
@@ -1374,13 +1964,9 @@ export default function App() {
                             </div>
 
 
-                            {/* =================================
-                                ADD COIN
-                            ================================= */}
+                            {/* ADD COIN */}
 
-                            <div
-                                className="coin-manager-add"
-                            >
+                            <div className="coin-manager-add">
 
                                 <select
                                     value={
@@ -1390,7 +1976,9 @@ export default function App() {
                                     onChange={
                                         event =>
                                             setNewSymbol(
-                                                event.target.value
+                                                event
+                                                    .target
+                                                    .value
                                             )
                                     }
 
@@ -1399,9 +1987,12 @@ export default function App() {
                                     }
                                 >
 
-                                    <option value="">
+                                    <option
+                                        value=""
+                                    >
                                         Select WEEX symbol
                                     </option>
+
 
                                     {
                                         availableSymbols.map(
@@ -1436,7 +2027,9 @@ export default function App() {
                                     onChange={
                                         event =>
                                             setNewBot(
-                                                event.target.value
+                                                event
+                                                    .target
+                                                    .value
                                             )
                                     }
 
@@ -1445,11 +2038,15 @@ export default function App() {
                                     }
                                 >
 
-                                    <option value="pricev1">
+                                    <option
+                                        value="pricev1"
+                                    >
                                         Price V1
                                     </option>
 
-                                    <option value="orderbookv3">
+                                    <option
+                                        value="orderbookv3"
+                                    >
                                         Order Book V3
                                     </option>
 
@@ -1472,13 +2069,9 @@ export default function App() {
                             </div>
 
 
-                            {/* =================================
-                                COIN LIST
-                            ================================= */}
+                            {/* COIN LIST */}
 
-                            <div
-                                className="table-wrapper"
-                            >
+                            <div className="table-wrapper">
 
                                 <table>
 
@@ -1506,13 +2099,14 @@ export default function App() {
 
                                     </thead>
 
+
                                     <tbody>
 
                                         {
                                             Object.keys(
                                                 assignments
                                             ).length ===
-                                            0 ? (
+                                                0 ? (
 
                                                 <tr>
 
@@ -1530,17 +2124,16 @@ export default function App() {
                                                 Object.entries(
                                                     assignments
                                                 ).map(
-                                                    (
-                                                        [
-                                                            symbol,
-                                                            botName,
-                                                        ]
-                                                    ) => {
+                                                    ([
+                                                        symbol,
+                                                        botName,
+                                                    ]) => {
 
                                                         const instance =
                                                             botInstances[
                                                                 symbol
                                                             ];
+
 
                                                         const isRunning =
                                                             instance?.status ===
@@ -1576,22 +2169,18 @@ export default function App() {
                                                                                 : "status-badge stopped"
                                                                         }
                                                                     >
-
                                                                         {
                                                                             isRunning
                                                                                 ? "RUNNING"
                                                                                 : "STOPPED"
                                                                         }
-
                                                                     </span>
 
                                                                 </td>
 
                                                                 <td>
 
-                                                                    <div
-                                                                        className="table-actions"
-                                                                    >
+                                                                    <div className="table-actions">
 
                                                                         {
                                                                             isRunning ? (
@@ -1633,7 +2222,7 @@ export default function App() {
 
                                                                         {
                                                                             botName ===
-                                                                            "pricev1" && (
+                                                                                "pricev1" && (
 
                                                                                 <button
                                                                                     onClick={() => {
@@ -1693,16 +2282,12 @@ export default function App() {
 
 
                         {/* =====================================
-                            BOT LIST
+                            BOT MANAGER
                         ===================================== */}
 
-                        <section
-                            className="panel"
-                        >
+                        <section className="panel">
 
-                            <div
-                                className="panel-header"
-                            >
+                            <div className="panel-header">
 
                                 <div>
 
@@ -1718,9 +2303,8 @@ export default function App() {
 
                             </div>
 
-                            <div
-                                className="bot-grid"
-                            >
+
+                            <div className="bot-grid">
 
                                 {
                                     bots.map(
@@ -1750,6 +2334,7 @@ export default function App() {
 
                                                 </div>
 
+
                                                 <div
                                                     className={
                                                         bot.status ===
@@ -1758,13 +2343,12 @@ export default function App() {
                                                             : "status-badge stopped"
                                                     }
                                                 >
-
                                                     {
                                                         bot.status ||
                                                         "FACTORY"
                                                     }
-
                                                 </div>
+
 
                                                 <div>
 
@@ -1780,23 +2364,469 @@ export default function App() {
                                                 </div>
 
 
+                                                {/* =====================================
+                                                    PRICE V1 SETTINGS
+                                                ===================================== */}
+
                                                 {
                                                     bot.name ===
-                                                    "orderbookv3" && (
+                                                        "pricev1" && (
 
-                                                        <div
-                                                            className="table-actions"
-                                                        >
+                                                        <div className="price-v1-settings">
+
+                                                            <div className="price-v1-settings-title">
+                                                                STRATEGY SETTINGS
+                                                            </div>
+
+
+                                                            <div className="price-v1-settings-grid">
+
+
+                                                                {/* TREND CANDLES */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Trend Candles
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .TREND_CANDLES
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "TREND_CANDLES",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* TREND REQUIRED */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Trend Required %
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="0"
+
+                                                                        max="100"
+
+                                                                        step="0.1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .TREND_REQUIRED
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "TREND_REQUIRED",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* ENTRY REQUIRED */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Entry Required %
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="0"
+
+                                                                        max="100"
+
+                                                                        step="0.1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .ENTRY_REQUIRED
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "ENTRY_REQUIRED",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* CONFIRMATIONS */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Confirmations
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .ENTRY_CONFIRMATIONS_REQUIRED
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "ENTRY_CONFIRMATIONS_REQUIRED",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* CYCLE LENGTH */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Cycle Length
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .CYCLE_LENGTH
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "CYCLE_LENGTH",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* HISTORY LIMIT */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        History Limit
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .HISTORY_LIMIT
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "HISTORY_LIMIT",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* KLINE LIMIT */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Kline Limit
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .KLINE_LIMIT
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "KLINE_LIMIT",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+
+                                                                {/* REFRESH BUFFER */}
+
+                                                                <label>
+
+                                                                    <span>
+                                                                        Refresh Buffer MS
+                                                                    </span>
+
+                                                                    <input
+                                                                        type="number"
+
+                                                                        min="1"
+
+                                                                        value={
+                                                                            priceV1Settings
+                                                                                .REFRESH_BUFFER_MS
+                                                                        }
+
+                                                                        onChange={
+                                                                            event =>
+                                                                                updatePriceV1Setting(
+                                                                                    "REFRESH_BUFFER_MS",
+                                                                                    event
+                                                                                        .target
+                                                                                        .value
+                                                                                )
+                                                                        }
+
+                                                                        disabled={
+                                                                            priceV1SettingsSaving
+                                                                        }
+
+                                                                    />
+
+                                                                </label>
+
+                                                            </div>
+
+
+                                                            {/* =====================================
+                                                                ENTRY WINDOWS
+                                                            ===================================== */}
+
+                                                            <div className="price-v1-entry-window-settings">
+
+                                                                <div className="price-v1-settings-label">
+                                                                    Entry Windows
+                                                                </div>
+
+
+                                                                <div className="price-v1-entry-window-row">
+
+                                                                    {
+                                                                        priceV1Settings
+                                                                            .ENTRY_WINDOWS
+                                                                            .map(
+                                                                                (
+                                                                                    windowSize,
+                                                                                    index
+                                                                                ) => (
+
+                                                                                    <input
+
+                                                                                        key={
+                                                                                            index
+                                                                                        }
+
+                                                                                        type="number"
+
+                                                                                        min="1"
+
+                                                                                        value={
+                                                                                            windowSize
+                                                                                        }
+
+                                                                                        onChange={
+                                                                                            event =>
+                                                                                                updateEntryWindow(
+                                                                                                    index,
+                                                                                                    event
+                                                                                                        .target
+                                                                                                        .value
+                                                                                                )
+                                                                                        }
+
+                                                                                        disabled={
+                                                                                            priceV1SettingsSaving
+                                                                                        }
+
+                                                                                    />
+
+                                                                                )
+                                                                            )
+                                                                    }
+
+                                                                </div>
+
+                                                            </div>
+
+
+                                                            {/* =====================================
+                                                                BUTTONS
+                                                            ===================================== */}
+
+                                                            <div className="price-v1-settings-actions">
+
+                                                                <button
+                                                                    onClick={
+                                                                        applyPriceV1Settings
+                                                                    }
+
+                                                                    disabled={
+                                                                        priceV1SettingsSaving ||
+                                                                        priceV1SettingsLoading
+                                                                    }
+                                                                >
+                                                                    {
+                                                                        priceV1SettingsSaving
+                                                                            ? "APPLYING..."
+                                                                            : "APPLY SETTINGS"
+                                                                    }
+                                                                </button>
+
+
+                                                                <button
+                                                                    onClick={
+                                                                        resetPriceV1Settings
+                                                                    }
+
+                                                                    disabled={
+                                                                        priceV1SettingsSaving
+                                                                    }
+                                                                >
+                                                                    RESET DEFAULTS
+                                                                </button>
+
+                                                            </div>
+
+
+                                                            <div className="price-v1-settings-note">
+
+                                                                {
+                                                                    priceV1SettingsLoading
+                                                                        ? "Loading session settings..."
+                                                                        : "Settings apply to new Price V1 bot instances."
+                                                                }
+
+                                                            </div>
+
+                                                        </div>
+
+                                                    )
+                                                }
+
+
+                                                {/* =====================================
+                                                    ORDER BOOK V3 GLOBAL CONTROL
+                                                ===================================== */}
+
+                                                {
+                                                    bot.name ===
+                                                        "orderbookv3" && (
+
+                                                        <div className="table-actions">
 
                                                             {
                                                                 bot.status ===
-                                                                "running" ? (
+                                                                    "running" ? (
 
                                                                     <button
                                                                         onClick={() =>
                                                                             stopGlobalBot(
                                                                                 bot.name
                                                                             )
+                                                                        }
+
+                                                                        disabled={
+                                                                            loading
                                                                         }
                                                                     >
                                                                         STOP
@@ -1809,6 +2839,10 @@ export default function App() {
                                                                             startGlobalBot(
                                                                                 bot.name
                                                                             )
+                                                                        }
+
+                                                                        disabled={
+                                                                            loading
                                                                         }
                                                                     >
                                                                         START
@@ -1844,10 +2878,10 @@ export default function App() {
 
             {
                 activeTab ===
-                "pricev1" && (
+                    "pricev1" && (
 
                     <main className="dashboard">
-                        
+
                         <PriceV1Panel
 
                             bot={
@@ -1876,22 +2910,36 @@ export default function App() {
 
 
             {/* =================================================
+                TRADING
+            ================================================= */}
+
+            {
+                activeTab ===
+                    "trading" && (
+
+                    <main className="dashboard">
+
+                        <TradingPositionsPanel />
+
+                    </main>
+
+                )
+            }
+
+
+            {/* =================================================
                 ORDER BOOK V3
             ================================================= */}
 
             {
                 activeTab ===
-                "orderbookv3" && (
+                    "orderbookv3" && (
 
                     <main className="dashboard">
 
-                        <section
-                            className="panel"
-                        >
+                        <section className="panel">
 
-                            <div
-                                className="panel-header"
-                            >
+                            <div className="panel-header">
 
                                 <div>
 
@@ -1907,9 +2955,8 @@ export default function App() {
 
                             </div>
 
-                            <div
-                                className="empty-row"
-                            >
+
+                            <div className="empty-row">
                                 Order Book V3 dashboard coming next.
                             </div>
 
@@ -1927,17 +2974,13 @@ export default function App() {
 
             {
                 activeTab ===
-                "settings" && (
+                    "settings" && (
 
                     <main className="dashboard">
 
-                        <section
-                            className="panel"
-                        >
+                        <section className="panel">
 
-                            <div
-                                className="panel-header"
-                            >
+                            <div className="panel-header">
 
                                 <div>
 
@@ -1953,13 +2996,10 @@ export default function App() {
 
                             </div>
 
-                            <div
-                                className="stats-grid"
-                            >
 
-                                <div
-                                    className="stat-card"
-                                >
+                            <div className="stats-grid">
+
+                                <div className="stat-card">
 
                                     <span>
                                         API SERVER
@@ -1971,9 +3011,8 @@ export default function App() {
 
                                 </div>
 
-                                <div
-                                    className="stat-card"
-                                >
+
+                                <div className="stat-card">
 
                                     <span>
                                         FRONTEND
@@ -1985,9 +3024,8 @@ export default function App() {
 
                                 </div>
 
-                                <div
-                                    className="stat-card"
-                                >
+
+                                <div className="stat-card">
 
                                     <span>
                                         BOT STATE
@@ -2022,6 +3060,4 @@ export default function App() {
         </div>
 
     );
-
 }
-
